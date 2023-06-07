@@ -18,8 +18,8 @@ let browserPromise;
 
 (async () => {
   browserPromise = puppeteer.launch({
-    headless: true,
-    executablePath: "./chrome-win/chrome.exe",
+    headless: "new",
+    executablePath:"./Application/chrome.exe",
     ignoreDefaultArgs: ["--disable-extensions"],
   });
 })();
