@@ -8,7 +8,7 @@ const cheerio = require("cheerio");
 const bodyParser = require("body-parser");
 const cron = require("node-cron");
 const serviceAccount = require("./price-tracker-4cc9b-firebase-adminsdk-8j9qc-d733aeb855.json");
-
+const {chromium}=require("playwright") 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -17,10 +17,8 @@ const db = admin.firestore();
 let browserPromise;
 
 (async () => {
-  browserPromise = puppeteer.launch({
-    headless: "new",
-    executablePath:"./Application/chrome.exe",
-    ignoreDefaultArgs: ["--disable-extensions"],
+  browserPromise = chromium.launch({
+      ignoreDefaultArgs: ["--disable-extensions"],
   });
 })();
 
@@ -509,7 +507,7 @@ cron.schedule("0 9,14,18 * * *", async () => {
 });
 router.get("/scrape", async (req, res) => {
   try {
-    const browser = await puppeteer.launch();
+    const browser = await chromium.launch();
     const page = await browser.newPage();
 
     // Navigate to the website you want to scrape
