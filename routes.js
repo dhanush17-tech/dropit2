@@ -8,7 +8,8 @@ const cheerio = require("cheerio");
 const bodyParser = require("body-parser");
 const cron = require("node-cron");
 const serviceAccount = require("./price-tracker-4cc9b-firebase-adminsdk-8j9qc-d733aeb855.json");
-const {chromium}=require("playwright") 
+const { chromium } = require("playwright");
+
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -18,7 +19,7 @@ let browserPromise;
 
 (async () => {
   browserPromise = chromium.launch({
-      ignoreDefaultArgs: ["--disable-extensions"],
+    ignoreDefaultArgs: ["--disable-extensions"],
   });
 })();
 
@@ -406,8 +407,7 @@ router.get("/barcodeScan", async (req, res) => {
   try {
     const productTitle = await scrapeProductTitle(upcCode, 3);
     console.log(productTitle);
-    const browser = await browserPromise;
-
+    const browser = await chromium.launch();
     const page = await browser.newPage();
     await page.goto("https://pricee.com/");
     await page.type('input[name="q"]', productTitle);
