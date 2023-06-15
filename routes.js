@@ -86,137 +86,7 @@ async function getImage(buyLink) {
     console.error("Error:", error);
     return "";
   }
-}
-
-// Send a notification
-async function sendNotification() {
-  try {
-    const campaigns = await getCampaigns();
-    console.log("Sending notification:", campaigns);
-    for (const campaign of campaigns) {
-      const topic = campaign;
-      console.log("Processing campaign:", topic);
-
-      // Perform actions for each campaign
-      // For example, send a message to the devices subscribed to the campaign
-      const browser = await browserPromise;
-      const page = await browser.newPage();
-      await page.goto("https://pricee.com/");
-      await page.type('input[name="q"]', topic.title);
-      await page.keyboard.press("Enter");
-
-      await page.waitForSelector(".pd-img img", { timeout: 5000 });
-      const html = await page.content();
-      const $ = cheerio.load(html);
-      const prices = $(".pd-price");
-      const titles = $(".pd-title a span");
-      const offers = $(".pd-ref a");
-      const buyLinks = $(".pd-title a");
-      const websiteLogos = $(".pd-str-logo img");
-      const offerstext = $(".pd-off");
-      const imgs = $(".pd-img img");
-
-      const title = $(titles[0]).text();
-      const offer = $(offers[0]).text();
-      const buyLink = $(buyLinks[0]).attr("href");
-      const websiteLogo = $(websiteLogos[0]).attr("src");
-      $(offerstext[0]).remove();
-      const price = $(prices[0]).text().trim().replace("₹", "");
-      const img = $(imgs[0]).attr("src");
-
-      console.log(price);
-      console.log(img);
-      console.log(parseInt(price.replace(",", "").trim()));
-      console.log(parseInt(topic.price.replace(",", "").trim()));
-      if (
-        parseInt(price.replace(",", "").trim()) <
-        parseInt(topic.price.replace(",", "").trim())
-      ) {
-        console.log("sending message");
-        //sendNotification
-        // Define the notification payload
-        let messagetitle = "";
-        for (const i in topic.title) {
-          if (i != "" || i != "/") {
-            messagetitle += i;
-          }
-        }
-        // Send the notification to the device(s)
-
-        try {
-          const message = {
-            topic: messagetitle,
-            notification: {
-              title: `The sale for ${topic.title} is on 🎉`,
-              imageUrl: img,
-              body: "Check it out right now !",
-            },
-            data: {
-              price: price.replace("₹", ""),
-              title: title,
-              offer: offer,
-              img: img,
-              buyLink: buyLink,
-              websiteLogo: websiteLogo,
-              description: "",
-            },
-          };
-          const response = await admin.messaging().send(message);
-          console.log("Message sent:", response);
-        } catch (error) {
-          const message = {
-            topic: messagetitle,
-            notification: {
-              title: `The sale for ${topic.title} is on 🎉`,
-              body: "Check it out right now !",
-            },
-            data: {
-              price: price.replace("₹", ""),
-              title: title,
-              offer: offer,
-              img: img,
-              buyLink: buyLink,
-              websiteLogo: websiteLogo,
-              description: "",
-            },
-          };
-          const response = await admin.messaging().send(message);
-          console.log("Message sent:", response);
-        }
-        const querySnapshot = await db
-          .collection("campaigns")
-          .where("title", "==", topic.title)
-          .get();
-        querySnapshot.docs.forEach((docs) => {
-          docs.ref.update({
-            title: topic.title,
-            price: price.replace(",", "").trim(),
-          });
-        });
-      } else {
-        console.log("not sending");
-      }
-    }
-  } catch (error) {
-    console.error("Error sending notification:", error);
-  }
-}
-
-// Route to add items to the cart
-router.post("/addCart", async (req, res) => {
-  try {
-    const data = req.body;
-    for (const item of data) {
-      await addDocument("campaigns", {
-        title: item.title,
-        price: item.price.replace(",", ""),
-      });
-    }
-    res.status(200).json({ message: "Items added to cart successfully" });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to add items to cart" });
-  }
-});
+} 
 
 // Route to scrape product title from a website
 router.get("/getInfo", async (req, res) => {
@@ -277,7 +147,7 @@ router.get("/searchItem", async (req, res) => {
 
   try {
     const browser = await chromium.launch();
-     const page = await browser.newPage();
+    const page = await browser.newPage();
     await page.goto("https://pricee.com/");
     await page.type('input[name="q"]', itemName);
     await page.keyboard.press("Enter");
@@ -499,32 +369,216 @@ router.post("/getInfo", async (req, res) => {
     res.status(500).json({ error: "An error occurred" });
   }
 });
-sendNotification();
-
-cron.schedule("0 9,14,18 * * *", async () => {
-  // Call your function
-  await sendNotification();
-});
-router.get("/scrape", async (req, res) => {
+router.post("/addCart", async (req, res) => {
   try {
-    const browser = await chromium.launch();
-    const page = await browser.newPage();
+    const { cartItems, fcmTokenId } = req.body;
+    for (const element of cartItems) {
+      let data = JSON.parse(element);
+      console.log(data);
+      console.log(data.title);
+      try {
+        const exists = await checkTopicExists(data.title);
+        let messagetitle = "";
+        for (const i in data.title) {
+          if (i != "" || i != "/") {
+            messagetitle += i;
+          }
+        }
+        if (exists) {
+          console.log(data.title + data.price);
+          console.log(fcmTokenId);
 
-    // Navigate to the website you want to scrape
-    await page.goto("https://example.com");
-
-    // Perform web interactions or extract data using Puppeteer
-    const title = await page.title();
-
-    // Close the browser
-    await browser.close();
-
-    // Send the scraped data back as the response
-    res.send(`Title: ${title}`);
-  } catch (error) {
-    console.error("Error:", error);
-    res.status(500).send("An error occurred");
+          await admin.messaging().subscribeToTopic(fcmTokenId, messagetitle);
+          console.log("Device subscribed to topic successfully");
+        } else {
+          console.log(data.title + data.price);
+          addDocument("campaigns", {
+            title: data.title,
+            price: data.price.replace(",", ""),
+          });
+          await admin.messaging().subscribeToTopic(fcmTokenId, messagetitle);
+          console.log("Topic created successfully");
+        }
+      } catch (error) {
+        console.error("Error subscribing to topic:", error);
+      }
+    }
+  } catch (err) {
+    console.log(err);
   }
 });
+ 
+async function addDocument(collectionName, documentData) {
+  try {
+    const docRef = await db.collection(collectionName).add(documentData);
+    console.log("Document added with ID:", docRef.id);
+    return docRef.id;
+  } catch (error) {
+    console.error("Error adding document:", error);
+    return null;
+  }
+}
+
+async function getCampaigns() {
+  try {
+    const topics = [];
+    const doc = (await db.collection("campaigns").get()).forEach((d) => {
+      console.log(d.data().title);
+      topics.push({ title: d.data().title, price: d.data().price });
+    });
+    return topics;
+  } catch (error) {
+    console.error("Error fetching campaigns/topics:", error);
+    return [];
+  }
+}
+async function checkTopicExists(topic) {
+  try {
+    const querySnapshot = await db
+      .collection("campaigns")
+      .where("title", "==", topic)
+      .get();
+
+    if (querySnapshot.empty) {
+      // No documents found, topic doesn't exist
+      return false;
+    } else {
+      // At least one document found, topic exists
+      console.log("Document exists");
+      return true;
+    }
+  } catch (error) {
+    console.error("Error fetching topics:", error);
+    return false;
+  }
+}
+
+async function sendNotification() {
+  const campaigns = await getCampaigns();
+  for (const campaign of campaigns) {
+    const topic = campaign;
+    console.log("Processing campaign:", topic);
+
+    // Perform actions for each campaign
+    // For example, send a message to the devices subscribed to the campaign
+    const browser = await browserPromise;
+    const page = await browser.newPage();
+    await page.goto("https://pricee.com/");
+    await page.type('input[name="q"]', topic.title);
+    await page.keyboard.press("Enter");
+
+    await page.waitForSelector(".pd-img img", { timeout: 5000 });
+    const html = await page.content();
+    const $ = cheerio.load(html);
+    const prices = $(".pd-price");
+    const titles = $(".pd-title a span");
+    const offers = $(".pd-ref a");
+    const buyLinks = $(".pd-title a");
+    const websiteLogos = $(".pd-str-logo img");
+    const offerstext = $(".pd-off");
+    const imgs = $(".pd-img img");
+
+    const title = $(titles[0]).text();
+    const offer = $(offers[0]).text();
+    const buyLink = $(buyLinks[0]).attr("href");
+    const websiteLogo = $(websiteLogos[0]).attr("src");
+    $(offerstext[0]).remove();
+    const price = $(prices[0]).text().trim().replace("₹", "");
+    const img = $(imgs[0]).attr("src");
+
+    console.log(price);
+    console.log(img);
+    console.log(parseInt(price.replace(",", "").trim()));
+    console.log(parseInt(topic.price.replace(",", "").trim()));
+    if (
+      parseInt(price.replace(",", "").trim()) <
+      parseInt(topic.price.replace(",", "").trim())
+    ) {
+      console.log("sending message");
+      //sendNotification
+      // Define the notification payload
+      let messagetitle = "";
+      for (const i in topic.title) {
+        if (i != "" || i != "/") {
+          messagetitle += i;
+        }
+      }
+      // Send the notification to the device(s)
+
+      try {
+        const message = {
+          topic: messagetitle,
+          notification: {
+            title: `The sale for ${topic.title} is on 🎉`,
+            imageUrl: img,
+            body: "Check it out right now !",
+          },
+          data: {
+            price: price.replace("₹", ""),
+            title: title,
+            offer: offer,
+            img: img,
+            buyLink: buyLink,
+            websiteLogo: websiteLogo,
+            description: "",
+          },
+        };
+        const response = await admin.messaging().send(message);
+        console.log("Message sent:", response);
+      } catch (error) {
+        const message = {
+          topic: messagetitle,
+          notification: {
+            title: `The sale for ${topic.title} is on 🎉`,
+            body: "Check it out right now !",
+          },
+          data: {
+            price: price.replace("₹", ""),
+            title: title,
+            offer: offer,
+            img: img,
+            buyLink: buyLink,
+            websiteLogo: websiteLogo,
+            description: "",
+          },
+        };
+        const response = await admin.messaging().send(message);
+        console.log("Message sent:", response);
+      }
+      const querySnapshot = await db
+        .collection("campaigns")
+        .where("title", "==", topic.title)
+        .get();
+      querySnapshot.docs.forEach((docs) => {
+        docs.ref.update({
+          title: topic.title,
+          price: price.replace(",", "").trim(),
+        });
+      });
+    } else {
+      console.log("not sending");
+    }
+  }
+}
+
+router.use("/unsubscribeFromTopic", async (req, res) => {
+  try {
+    const { token, topic } = req.body;
+    let messagetitle = "";
+    for (const i in topic) {
+      if (i != "" || i != "/") {
+        messagetitle += i;
+      }
+    }
+    admin.messaging().unsubscribeFromTopic(token, messagetitle);
+    res.sendStatus(200);
+  } catch (error) {
+    res.sendStatus(500);
+  }
+});
+cron.schedule("0 9,14,18 * * *", () => {
+  // Call your function
+  sendNotification();
+}); sendNotification();
 
 module.exports = router;
