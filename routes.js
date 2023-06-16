@@ -149,6 +149,7 @@ router.get("/searchItem", async (req, res) => {
     const browser = await chromium.launch();
     const page = await browser.newPage();
     await page.goto("https://pricee.com/");
+    await page.waitForSelector("input[name='q']")
     await page.type('input[name="q"]', itemName);
     await page.keyboard.press("Enter");
 
