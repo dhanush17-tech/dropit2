@@ -86,7 +86,7 @@ async function getImage(buyLink) {
     console.error("Error:", error);
     return "";
   }
-} 
+}
 
 // Route to scrape product title from a website
 router.get("/getInfo", async (req, res) => {
@@ -148,8 +148,8 @@ router.get("/searchItem", async (req, res) => {
   try {
     const browser = await chromium.launch();
     const page = await browser.newPage();
-    await page.goto("https://pricee.com/");
-    await page.waitForSelector("input[name='q']")
+    await page.goto("https://pricee.com/", {timeout:0});
+    await page.waitForSelector("input[name='q']");
     await page.type('input[name="q"]', itemName);
     await page.keyboard.press("Enter");
 
@@ -280,7 +280,7 @@ router.get("/barcodeScan", async (req, res) => {
     console.log(productTitle);
     const browser = await chromium.launch();
     const page = await browser.newPage();
-    await page.goto("https://pricee.com/");
+    await page.goto("https://pricee.com/", {timeout:0});
     await page.type('input[name="q"]', productTitle);
     await page.keyboard.press("Enter");
 
@@ -408,7 +408,7 @@ router.post("/addCart", async (req, res) => {
     console.log(err);
   }
 });
- 
+
 async function addDocument(collectionName, documentData) {
   try {
     const docRef = await db.collection(collectionName).add(documentData);
@@ -580,6 +580,7 @@ router.use("/unsubscribeFromTopic", async (req, res) => {
 cron.schedule("0 9,14,18 * * *", () => {
   // Call your function
   sendNotification();
-}); sendNotification();
+});
+sendNotification();
 
 module.exports = router;
