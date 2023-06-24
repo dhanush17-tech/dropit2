@@ -148,7 +148,7 @@ router.get("/searchItem", async (req, res) => {
   try {
     const browser = await chromium.launch();
     const page = await browser.newPage();
-    await page.goto("https://pricee.com/", {timeout:0});
+    await page.goto("https://pricee.com/", { timeout: 0 });
     await page.waitForSelector("input[name='q']");
     await page.type('input[name="q"]', itemName);
     await page.keyboard.press("Enter");
@@ -259,18 +259,9 @@ router.get("/latestDeals", async (req, res) => {
   }
 });
 
-async function scrapeProductTitle(upcCode, count) {
-  const response = await axios.get(
-    `https://www.digit-eyes.com/gtin/v2_0/?upcCode=${upcCode}&field_names=all&language=en&router_key=/+HhNVZVWs5z&signature=9LuONEZ1dsEZz0fA4bgMZG+bYVk=`
-  );
-  return response.data["description"]
-    .split(" ")
-    .slice(0, count ?? title.split(" ").length)
-    .join(" ");
-}
-
-// Route to scan a barcode
 router.get("/barcodeScan", async (req, res) => {
+  const browser = await chromium.launch();
+
   const upcCode = req.body.barcodeId;
   console.log("This is code " + upcCode);
   const items = [];
@@ -278,31 +269,45 @@ router.get("/barcodeScan", async (req, res) => {
   try {
     const productTitle = await scrapeProductTitle(upcCode, 3);
     console.log(productTitle);
-    const browser = await chromium.launch();
+
     const page = await browser.newPage();
-    await page.goto("https://pricee.com/", {timeout:0});
+    await page.goto("https://pricee.com/", { timeout: 0 });
     await page.type('input[name="q"]', productTitle);
     await page.keyboard.press("Enter");
 
-    await page.waitForSelector(".pd-img img", { timeout: 5000 });
-    const html = await page.content();
-    const $ = cheerio.load(html);
-    const prices = $(".pd-price");
-    const titles = $(".pd-title a span");
-    const imgs = $(".pd-img img");
-    const offers = $(".pd-ref a");
-    const buyLinks = $(".pd-title a");
-    const offerstext = $(".pd-off");
+    await page.waitForSelector(".pd-price", { timeout: 5000 });
 
-    const websiteLogos = $(".pd-str-logo img");
+    const prices = await page.$$eval(".pd-price", (elements) =>
+      elements.map((el) => el.textContent.trim().replace("₹", ""))
+    );
+    const titles = await page.$$eval(".pd-title a span", (elements) =>
+      elements.map((el) => el.textContent)
+    );
+    const imgs = await page.$$eval(".pd-img img", (elements) =>
+      elements.map((el) => el.getAttribute("src"))
+    );
+    const offers = await page.$$eval(".pd-ref a", (elements) =>
+      elements.map((el) => el.textContent)
+    );
+    const buyLinks = await page.$$eval(".pd-title a", (elements) =>
+      elements.map((el) => el.getAttribute("href"))
+    );
+    const websiteLogos = await page.$$eval(".pd-str-logo img", (elements) =>
+      elements.map((el) => el.getAttribute("src"))
+    );
+
+    const offerstext = await page.$$(".pd-off");
+
     for (let i = 0; i < prices.length; i++) {
-      const title = $(titles[i]).text();
-      const img = $(imgs[i]).attr("src");
-      const offer = $(offers[i]).text();
-      const buyLink = $(buyLinks[i]).attr("href");
-      const websiteLogo = $(websiteLogos[i]).attr("src");
-      $(offerstext[i]).remove();
-      const price = $(prices[i]).text().trim().replace("₹", "");
+      const title = titles[i];
+      const img = imgs[i];
+      const offer = offers[i];
+      const buyLink = buyLinks[i];
+      const websiteLogo = websiteLogos[i];
+      if (offerstext[i]) {
+        await page.evaluate((element) => element.remove(), offerstext[i]);
+      }
+      const price = prices[i];
       items.push({
         price,
         title,
@@ -321,6 +326,23 @@ router.get("/barcodeScan", async (req, res) => {
     res.status(500).json({ error: "An error occurred" });
   }
 });
+
+async function scrapeProductTitle(upcCode, count) {
+  const response = await axios.get(
+    `https://www.digit-eyes.com/gtin/v2_0/?upcCode=${upcCode}&field_names=all&language=en&router_key=/+HhNVZVWs5z&signature=9LuONEZ1dsEZz0fA4bgMZG+bYVk=`
+  );
+  return response.data["description"]
+    .split(" ")
+    .slice(0, count ?? title.split(" ").length)
+    .join(" ");
+}
+
+// Remember to close the browser when you're done with the requests
+process.on("SIGINT", async () => {
+  await browser.close();
+  process.exit(0);
+});
+
 router.post("/getInfo", async (req, res) => {
   try {
     const { title, buyLink } = req.body;
