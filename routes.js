@@ -9,6 +9,8 @@ const bodyParser = require("body-parser");
 const cron = require("node-cron");
 const serviceAccount = require("./price-tracker-4cc9b-firebase-adminsdk-8j9qc-d733aeb855.json");
 const { chromium } = require("playwright");
+const NodeCache = require("node-cache");
+const cache = new NodeCache();
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -88,136 +90,179 @@ async function getImage(buyLink) {
   }
 }
 
-// Route to scrape product title from a website
-router.get("/getInfo", async (req, res) => {
-  try {
-    const { title, buyLink } = req.body;
+// // Route to scrape product title from a website
+// router.get("/getInfo", async (req, res) => {
+//   try {
+//     const { title, buyLink } = req.body;
 
-    const [imageResponse, shoppingResponse] = await Promise.all([
-      axios.get(`https://www.google.com/search?q=${title}&tbm=isch`),
-      axios.get(`https://shopping.google.com/search?q=${title}`),
-    ]);
+//     const [imageResponse, shoppingResponse] = await Promise.all([
+//       axios.get(`https://www.google.com/search?q=${title}&tbm=isch`),
+//       axios.get(`https://shopping.google.com/search?q=${title}`),
+//     ]);
 
-    const $ = cheerio.load(imageResponse.data);
-    const imageUrls = [];
-    $("img").each((index, element) => {
-      if (index < 4) {
-        // Limit to the first 3 images
-        const imageUrl = $(element).attr("src");
-        imageUrls.push(imageUrl);
-      }
-    });
+//     const $ = cheerio.load(imageResponse.data);
+//     const imageUrls = [];
+//     $("img").each((index, element) => {
+//       if (index < 4) {
+//         // Limit to the first 3 images
+//         const imageUrl = $(element).attr("src");
+//         imageUrls.push(imageUrl);
+//       }
+//     });
 
-    const $1 = cheerio.load(shoppingResponse.data);
-    const rating = $1(".pyOKtc").first().text();
-    const url = $1(".xUCO8b").first().attr("href");
+//     const $1 = cheerio.load(shoppingResponse.data);
+//     const rating = $1(".pyOKtc").first().text();
+//     const url = $1(".xUCO8b").first().attr("href");
 
-    const [productResponse, buyLinkResponse] = await Promise.all([
-      axios.get(url),
-      buyLink.includes("pricebefore.com")
-        ? axios.get(buyLink)
-        : Promise.resolve({ data: "" }),
-    ]);
+//     const [productResponse, buyLinkResponse] = await Promise.all([
+//       axios.get(url),
+//       buyLink.includes("pricebefore.com")
+//         ? axios.get(buyLink)
+//         : Promise.resolve({ data: "" }),
+//     ]);
 
-    const $2 = cheerio.load(productResponse.data);
-    const description = $2(".VOVcm").text();
+//     const $2 = cheerio.load(productResponse.data);
+//     const description = $2(".VOVcm").text();
 
-    const p = cheerio.load(buyLinkResponse.data);
-    const updatedBuyLink = buyLink.includes("pricebefore.com")
-      ? p(".buy-button a").attr("href") || ""
-      : buyLink;
+//     const p = cheerio.load(buyLinkResponse.data);
+//     const updatedBuyLink = buyLink.includes("pricebefore.com")
+//       ? p(".buy-button a").attr("href") || ""
+//       : buyLink;
 
-    res.json({
-      description: description,
-      ratings: rating,
-      images: imageUrls.slice(1, imageUrls.length),
-      buyLink: updatedBuyLink,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "An error occurred" });
-  }
-});
+//     res.json({
+//       description: description,
+//       ratings: rating,
+//       images: imageUrls.slice(1, imageUrls.length),
+//       buyLink: updatedBuyLink,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ error: "An error occurred" });
+//   }
+// });
 
 // Route to search for an item
 router.get("/searchItem", async (req, res) => {
   console.log("Started...");
   const { itemName } = req.body;
-  const items = [];
+  // const items = [];
 
   try {
-    const browser = await chromium.launch();
-    const page = await browser.newPage();
-    await page.goto("https://pricee.com/", { timeout: 0 });
-    await page.waitForSelector("input[name='q']");
-    await page.type('input[name="q"]', itemName);
-    await page.keyboard.press("Enter");
+    // const browser = await chromium.launch();
+    // const page = await browser.newPage();
+    // await page.goto("https://pricee.com/", { timeout: 0 });
+    // await page.waitForSelector("input[name='q']");
+    // await page.type('input[name="q"]', itemName);
+    // await page.keyboard.press("Enter");
 
-    await page.waitForSelector(".pd-img img", { timeout: 5000 });
-    const html = await page.content();
-    await scrapeProductPage(html, items);
-    console.log(items);
-    res.json(items);
-  } catch (error) {
-    console.error("Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-router.post("/latestDeals", async (req, res) => {
-  console.log("Started....");
-
-  try {
+    // await page.waitForSelector(".pd-img img", { timeout: 5000 });
+    // const html = await page.content();
+    // await scrapeProductPage(html, items);
+    // console.log(items);
     const response = await axios.get(
-      `https://www.pricebefore.com/price-drops/?category=${req.body.dealType}&direction=desc&sort=price`
+      `https://pricee.com/api/v1/search.php?q=${itemName}&size=10&lang=en&vuid=0&platform=1`
     );
+    const responseData = response.data;
 
-    const $ = cheerio.load(response.data);
-    const prices = $(".final");
-    const titles = $(".col-right .link");
-    const imgs = $(".col-left img");
-    const buyLinks = $(".btn-wrap a");
-    const offers = $(".percent");
-
-    const fetchItemData = async (index, ele) => {
-      const price = $(ele).text().replace("*", "").replace("₹", "").trim();
-      const title = $(titles[index]).text() || "";
-      const buyLinkElement = buyLinks[index];
-      const buyLink = buyLinkElement ? $(buyLinkElement).attr("href") : "";
-      const offerElement = offers[index];
-      const offer = offerElement ? $(offerElement).text() : "";
-      const img = $(imgs[index]).attr("data-src") || (await getImage(buyLink));
-
+    const items = responseData.data; // Assuming the array of items is stored in the "data" property of the response
+    const extractedData = items.map((item) => {
+      const { title, url, source_logo, discount, source_price, image } = item;
       return {
-        price,
-        title,
-        img,
-        offer,
-        buyLink: `https://pricebefore.com${buyLink}`,
-        description: "",
-        websiteLogo: "",
+        price: source_price,
+        title: title,
+        offer: `${discount}% off`,
+        buyLink: url,
+        websiteLogo: source_logo,
+        img: image,
       };
-    };
+    });
 
-    const promises = prices.map(fetchItemData).get();
+    console.log("Extracted Data:", extractedData);
+    // // Store the data in a list or array
+    // const dataList = data.data.map((item) => ({
+    //   price: item.source_price,
+    //   title: item.title,
+    //   offer: `${item.discount}% off`,
+    //   buyLink: item.url,
+    //   websiteLogo: item.source_logo,
+    // })); // Assuming the API response has a property called 'value'
 
-    const items = await Promise.all(promises);
-
-    console.log(items.filter((item) => item.img !== ""));
-    res.json(items.filter((item) => item.img !== ""));
+    // console.log("Data fetched:", dataList);
+    res.json(extractedData);
   } catch (error) {
     console.error("Error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-// Route to get latest deals
 router.get("/latestDeals", async (req, res) => {
   console.log("Started....");
+  const cacheKey = `latestDeals_${req.body.dealType}`;
+
+  // Check if the data is available in the cache
+  const cachedData = cache.get(cacheKey);
+  if (cachedData) {
+    console.log("Retrieved from cache");
+    res.json(cachedData);
+
+    // Check if the data needs to be refreshed
+    const shouldRefreshData = checkIfDataNeedsRefresh(cacheKey); // Implement your logic to determine if data needs to be refreshed
+
+    if (shouldRefreshData) {
+      console.log("Refreshing cache...");
+      try {
+        // Fetch the updated data
+        const updatedData = await fetchData(req.body.dealType);
+
+        // Update the cache with the new data
+        cache.set(cacheKey, updatedData);
+        console.log("Cache updated with new data");
+      } catch (error) {
+        console.error("Error while fetching updated data:", error);
+      }
+    }
+
+    return;
+  }
+
+  try {
+    // Fetch the initial data
+    const initialData = await fetchData(req.body.dealType);
+
+    // Store the data in the cache
+    cache.set(cacheKey, initialData);
+    console.log("Data stored in cache");
+
+    res.json(initialData);
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+async function fetchData(dealType) {
+  //FROM PRICEE.COM
+
+  // const items = [];
+
+  // const browser = await puppeteer.launch();
+  // const page = await browser.newPage();
+  // await page.goto(`https://pricee.com/?q=${dealType}`);
+  // await page.screenshot();
+  // await page.waitForSelector(".pd-price", { timeout: 5000 });
+  // const html = await page.content();
+  // await scrapeProductPage(html, items);
+  // console.log(items);
+
+  // // Close the browser after fetching the data
+
+  // return items;
+
+  //FROM PRICEBEFORE.COM
 
   try {
     const response = await axios.get(
-      `https://www.pricebefore.com/price-drops/?category=${req.body.dealType}&direction=desc&sort=price`
+      `https://www.pricebefore.com/price-drops/?category=${dealType}&direction=desc&sort=price`
     );
 
     const $ = cheerio.load(response.data);
@@ -250,16 +295,40 @@ router.get("/latestDeals", async (req, res) => {
     const promises = prices.map(fetchItemData).get();
 
     const items = await Promise.all(promises);
-
     console.log(items.filter((item) => item.img !== ""));
-    res.json(items.filter((item) => item.img !== ""));
+    return items.filter((item) => item.img !== "");
   } catch (error) {
     console.error("Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
   }
-});
+}
+function checkIfDataNeedsRefresh(cacheKey) {
+  // Get the cached data and its timestamp
+  const cachedData = cache.get(cacheKey);
+  const cachedTimestamp = cache.getTtl(cacheKey);
 
+  // Define the refresh interval (e.g., 1 hour)
+  const refreshInterval = 60 * 60 * 1000; // 1 hour in milliseconds
+
+  // Calculate the current timestamp
+  const currentTimestamp = Date.now();
+
+  // Check if the cached data and its timestamp exist
+  if (cachedData && cachedTimestamp) {
+    // Calculate the elapsed time since the last data fetch
+    const elapsedTime = currentTimestamp - cachedTimestamp;
+
+    // Compare the elapsed time with the refresh interval
+    if (elapsedTime > refreshInterval) {
+      // Data is outdated and needs to be refreshed
+      return true;
+    }
+  }
+
+  // Data is up to date or not available in the cache
+  return false;
+}
 router.get("/barcodeScan", async (req, res) => {
+  console.log("Barcpde scan started")
   const browser = await chromium.launch();
 
   const upcCode = req.body.barcodeId;
@@ -268,59 +337,75 @@ router.get("/barcodeScan", async (req, res) => {
 
   try {
     const productTitle = await scrapeProductTitle(upcCode, 3);
-    console.log(productTitle);
-
-    const page = await browser.newPage();
-    await page.goto("https://pricee.com/", { timeout: 0 });
-    await page.type('input[name="q"]', productTitle);
-    await page.keyboard.press("Enter");
-
-    await page.waitForSelector(".pd-price", { timeout: 5000 });
-
-    const prices = await page.$$eval(".pd-price", (elements) =>
-      elements.map((el) => el.textContent.trim().replace("₹", ""))
+    console.log(productTitle);    const response = await axios.get(
+      `https://pricee.com/api/v1/search.php?q=${productTitle}&size=10&lang=en&vuid=0&platform=1`
     );
-    const titles = await page.$$eval(".pd-title a span", (elements) =>
-      elements.map((el) => el.textContent)
-    );
-    const imgs = await page.$$eval(".pd-img img", (elements) =>
-      elements.map((el) => el.getAttribute("src"))
-    );
-    const offers = await page.$$eval(".pd-ref a", (elements) =>
-      elements.map((el) => el.textContent)
-    );
-    const buyLinks = await page.$$eval(".pd-title a", (elements) =>
-      elements.map((el) => el.getAttribute("href"))
-    );
-    const websiteLogos = await page.$$eval(".pd-str-logo img", (elements) =>
-      elements.map((el) => el.getAttribute("src"))
-    );
+    const responseData = response.data;
 
-    const offerstext = await page.$$(".pd-off");
+    const items = responseData.data; // Assuming the array of items is stored in the "data" property of the response
+    const extractedData = items.map((item) => {
+      const { title, url, source_logo, discount, source_price, image } = item;
+      return {
+        price: source_price,
+        title: title,
+        offer: `${discount}% off`,
+        buyLink: url,
+        websiteLogo: source_logo,
+        img: image,
+      };
+    });
 
-    for (let i = 0; i < prices.length; i++) {
-      const title = titles[i];
-      const img = imgs[i];
-      const offer = offers[i];
-      const buyLink = buyLinks[i];
-      const websiteLogo = websiteLogos[i];
-      if (offerstext[i]) {
-        await page.evaluate((element) => element.remove(), offerstext[i]);
-      }
-      const price = prices[i];
-      items.push({
-        price,
-        title,
-        offer,
-        img,
-        buyLink,
-        websiteLogo,
-        description: "",
-      });
-    }
+    // const page = await browser.newPage();
+    // await page.goto("https://pricee.com/", { timeout: 0 });
+    // await page.type('input[name="q"]', productTitle);
+    // await page.keyboard.press("Enter");
 
-    console.log(items);
-    res.json(items);
+    // await page.waitForSelector(".pd-price", { timeout: 5000 });
+
+    // const prices = await page.$$eval(".pd-price", (elements) =>
+    //   elements.map((el) => el.textContent.trim().replace("₹", ""))
+    // );
+    // const titles = await page.$$eval(".pd-title a span", (elements) =>
+    //   elements.map((el) => el.textContent)
+    // );
+    // const imgs = await page.$$eval(".pd-img img", (elements) =>
+    //   elements.map((el) => el.getAttribute("src"))
+    // );
+    // const offers = await page.$$eval(".pd-ref a", (elements) =>
+    //   elements.map((el) => el.textContent)
+    // );
+    // const buyLinks = await page.$$eval(".pd-title a", (elements) =>
+    //   elements.map((el) => el.getAttribute("href"))
+    // );
+    // const websiteLogos = await page.$$eval(".pd-str-logo img", (elements) =>
+    //   elements.map((el) => el.getAttribute("src"))
+    // );
+
+    // const offerstext = await page.$$(".pd-off");
+
+    // for (let i = 0; i < prices.length; i++) {
+    //   const title = titles[i];
+    //   const img = imgs[i];
+    //   const offer = offers[i];
+    //   const buyLink = buyLinks[i];
+    //   const websiteLogo = websiteLogos[i];
+    //   if (offerstext[i]) {
+    //     await page.evaluate((element) => element.remove(), offerstext[i]);
+    //   }
+    //   const price = prices[i];
+    //   items.push({
+    //     price,
+    //     title,
+    //     offer,
+    //     img,
+    //     buyLink,
+    //     websiteLogo,
+    //     description: "",
+    //   });
+    // }
+
+    console.log(extractedData);
+    res.json(extractedData);
   } catch (error) {
     console.error("Error:", error);
     res.status(500).json({ error: "An error occurred" });
@@ -337,61 +422,119 @@ async function scrapeProductTitle(upcCode, count) {
     .join(" ");
 }
 
-// Remember to close the browser when you're done with the requests
-process.on("SIGINT", async () => {
-  await browser.close();
-  process.exit(0);
-});
-
-router.post("/getInfo", async (req, res) => {
+const config = {
+  headers: {
+    // Set the user agent header
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
+    // Set other headers as needed
+    Accept:
+      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Language": "en-US,en;q=0.9",
+  },
+};
+router.get("/getInfo", async (req, res) => {
   try {
     const { title, buyLink } = req.body;
 
-    const [imageResponse, shoppingResponse] = await Promise.all([
-      axios.get(`https://www.google.com/search?q=${title}&tbm=isch`),
-      axios.get(`https://shopping.google.com/search?q=${title}`),
-    ]);
+    // Make the request to Amazon search page using Axios
+    const searchUrl = `https://www.amazon.in/s?k=${title}&crid=232C26IU722R5&sprefix=m%2Caps%2C295&ref=nb_sb_noss_2`;
+    const searchResponse = await axios.get(searchUrl, config);
+    const $ = cheerio.load(searchResponse.data);
 
-    const $ = cheerio.load(imageResponse.data);
-    const imageUrls = [];
-    $("img").each((index, element) => {
-      if (index < 4) {
-        // Limit to the first 3 images
-        const imageUrl = $(element).attr("src");
-        imageUrls.push(imageUrl);
+    const shelves = [];
+    const productElements = $(".s-result-item").slice(2, 3); // Slice the product elements if you want to extract multiple products
+    productElements.each((i, productElement) => {
+      const shelf = $(productElement);
+
+      const images = [];
+      const imageElements = shelf.find("img.s-image");
+      imageElements.each((j, imageElement) => {
+        const image = $(imageElement).attr("src") || "";
+        images.push(image);
+      });
+      console.log(images);
+      const totalReviewsElement = shelf.find(
+        "div.a-section.a-spacing-none.a-spacing-top-micro > div.a-row.a-size-small > span:last-child"
+      );
+      const totalReviews = totalReviewsElement.attr("aria-label") || "";
+
+      const starsElement = shelf.find(
+        "div.a-section.a-spacing-none.a-spacing-top-micro > div > span"
+      );
+      const stars = starsElement.attr("aria-label") || "";
+
+      const productTitleElement = shelf.find(
+        "span.a-size-base-plus.a-color-base.a-text-normal"
+      );
+      const productTitle = productTitleElement.text() || "";
+
+      let element = {
+        images,
+        buyLink,
+        amazonLink: "",
+      };
+
+      if (totalReviews) {
+        element.totalReviews = totalReviews;
       }
+
+      if (stars) {
+        element.ratings = stars.replace("out of 5 stars", "").trim();
+      }
+
+      const link = shelf.find("a.a-link-normal.a-text-normal").attr("href");
+      if (link) {
+        element.amazonLink = `https://amazon.in${link}`;
+      }
+
+      shelves.push(element);
     });
 
-    const $1 = cheerio.load(shoppingResponse.data);
-    const rating = $1(".pyOKtc").first().text();
-    const url = $1(".xUCO8b").first().attr("href");
+    console.log(shelves);
+    res.json(shelves);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+router.get("/getDescription", async (req, res) => {
+  const { amazonLink } = req.body; // Use req.query instead of req.body to retrieve the query parameter
 
-    const [productResponse, buyLinkResponse] = await Promise.all([
-      axios.get(url),
-      buyLink.includes("pricebefore.com")
-        ? axios.get(buyLink)
-        : Promise.resolve({ data: "" }),
-    ]);
+  console.log(amazonLink);
+  console.log("Fetching Description...");
 
-    const $2 = cheerio.load(productResponse.data);
-    const description = $2(".VOVcm").text();
+  try {
+    const descriptionResponse = await axios.get(amazonLink, config);
+    const $$ = cheerio.load(descriptionResponse.data);
+    const description = $$("#feature-bullets")
+      .text()
+      .replace("About this item", "")
+      .replace("Show More", "")
+      .replace(/\s\s+/g, " ")
+      .trim();
+    console.log("This is description", description);
 
-    const p = cheerio.load(buyLinkResponse.data);
-    const updatedBuyLink = buyLink.includes("pricebefore.com")
-      ? p(".buy-button a").attr("href") || ""
-      : buyLink;
+    // const images = [];
+    // const imageElements = $$(".imgTagWrapper"); // Use $$ instead of $ for consistency
+    // imageElements.each((j, imageElement) => {
+    //   const image = $$(imageElement).find("img").attr("src") || "";
+    //   images.push(image);
+    // });
+    // console.log(images);
 
     res.json({
       description: description,
-      ratings: rating,
-      images: imageUrls.slice(1, imageUrls.length),
-      buyLink: updatedBuyLink,
+
+      //images: images
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "An error occurred" });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
+
 router.post("/addCart", async (req, res) => {
   try {
     const { cartItems, fcmTokenId } = req.body;
@@ -584,7 +727,7 @@ async function sendNotification() {
   }
 }
 
-router.use("/unsubscribeFromTopic", async (req, res) => {
+router.post("/unsubscribeFromTopic", async (req, res) => {
   try {
     const { token, topic } = req.body;
     let messagetitle = "";
