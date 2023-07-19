@@ -160,7 +160,7 @@ router.get("/searchItem", async (req, res) => {
     // await scrapeProductPage(html, items);
     // console.log(items);
     const response = await axios.get(
-      `https://pricee.com/api/v1/search.php?q=${itemName}&size=10&lang=en&vuid=0&platform=1`
+      `https://pricee.com/api/v1/search.php?q=${itemName}&size=10&lang=en&page=1&vuid=0&platform=1`
     );
     const responseData = response.data;
 
@@ -328,8 +328,7 @@ function checkIfDataNeedsRefresh(cacheKey) {
   return false;
 }
 router.get("/barcodeScan", async (req, res) => {
-  console.log("Barcpde scan started")
-  const browser = await chromium.launch();
+  console.log("Barcpde scan started");
 
   const upcCode = req.body.barcodeId;
   console.log("This is code " + upcCode);
@@ -337,7 +336,8 @@ router.get("/barcodeScan", async (req, res) => {
 
   try {
     const productTitle = await scrapeProductTitle(upcCode, 3);
-    console.log(productTitle);    const response = await axios.get(
+    console.log(productTitle);
+    const response = await axios.get(
       `https://pricee.com/api/v1/search.php?q=${productTitle}&size=10&lang=en&vuid=0&platform=1`
     );
     const responseData = response.data;
@@ -444,55 +444,60 @@ router.get("/getInfo", async (req, res) => {
     const $ = cheerio.load(searchResponse.data);
 
     const shelves = [];
-    const productElements = $(".s-result-item").slice(2, 3); // Slice the product elements if you want to extract multiple products
-    productElements.each((i, productElement) => {
-      const shelf = $(productElement);
+    const productElements = $(".s-result-item").slice(2, 3);
+    await Promise.all(
+      productElements.map(async (i, productElement) => {
+        const shelf = $(productElement);
+        const images = [];
+        const imageElements = shelf.find("img.s-image");
+        imageElements.each((j, imageElement) => {
+          const image = $(imageElement).attr("src") || "";
+          images.push(image);
+        });
 
-      const images = [];
-      const imageElements = shelf.find("img.s-image");
-      imageElements.each((j, imageElement) => {
-        const image = $(imageElement).attr("src") || "";
-        images.push(image);
-      });
-      console.log(images);
-      const totalReviewsElement = shelf.find(
-        "div.a-section.a-spacing-none.a-spacing-top-micro > div.a-row.a-size-small > span:last-child"
-      );
-      const totalReviews = totalReviewsElement.attr("aria-label") || "";
+        const totalReviewsElement = shelf.find(
+          "div.a-section.a-spacing-none.a-spacing-top-micro > div.a-row.a-size-small > span:last-child"
+        );
+        const totalReviews = totalReviewsElement.attr("aria-label") || "";
 
-      const starsElement = shelf.find(
-        "div.a-section.a-spacing-none.a-spacing-top-micro > div > span"
-      );
-      const stars = starsElement.attr("aria-label") || "";
+        const starsElement = shelf.find(
+          "div.a-section.a-spacing-none.a-spacing-top-micro > div > span"
+        );
+        const stars = starsElement.attr("aria-label") || "";
 
-      const productTitleElement = shelf.find(
-        "span.a-size-base-plus.a-color-base.a-text-normal"
-      );
-      const productTitle = productTitleElement.text() || "";
+        const productTitleElement = shelf.find(
+          "span.a-size-base-plus.a-color-base.a-text-normal"
+        );
+        const productTitle = productTitleElement.text() || "";
 
-      let element = {
-        images,
-        buyLink,
-        amazonLink: "",
-      };
+        let modifiedBuyLink = buyLink; // Store the original buyLink to prevent mutation
+        if (buyLink.includes("pricebefore.com")) {
+          const buyLinkResponse = await axios.get(buyLink);
+          const p = cheerio.load(buyLinkResponse.data);
+          modifiedBuyLink = p(".buy-button a").attr("href") || "";
+        }
 
-      if (totalReviews) {
-        element.totalReviews = totalReviews;
-      }
+        const link = shelf.find("a.a-link-normal.a-text-normal").attr("href");
+        const amazonLink = link ? `https://amazon.in${link}` : "";
 
-      if (stars) {
-        element.ratings = stars.replace("out of 5 stars", "").trim();
-      }
+        const element = {
+          images,
+          buyLink: modifiedBuyLink,
+          amazonLink,
+        };
 
-      const link = shelf.find("a.a-link-normal.a-text-normal").attr("href");
-      if (link) {
-        element.amazonLink = `https://amazon.in${link}`;
-      }
+        if (totalReviews) {
+          element.totalReviews = totalReviews;
+        }
 
-      shelves.push(element);
-    });
+        if (stars) {
+          element.ratings = stars.replace("out of 5 stars", "").trim();
+        }
 
-    console.log(shelves);
+        shelves.push(element);
+      })
+    );
+
     res.json(shelves);
   } catch (error) {
     console.error(error);
@@ -627,31 +632,53 @@ async function sendNotification() {
 
     // Perform actions for each campaign
     // For example, send a message to the devices subscribed to the campaign
-    const browser = await browserPromise;
-    const page = await browser.newPage();
-    await page.goto("https://pricee.com/");
-    await page.type('input[name="q"]', topic.title);
-    await page.keyboard.press("Enter");
+    // const browser = await browserPromise;
+    // const page = await browser.newPage();
+    // await page.goto("https://pricee.com/");
+    // await page.type('input[name="q"]', topic.title);
+    // await page.keyboard.press("Enter");
 
-    await page.waitForSelector(".pd-img img", { timeout: 5000 });
-    const html = await page.content();
-    const $ = cheerio.load(html);
-    const prices = $(".pd-price");
-    const titles = $(".pd-title a span");
-    const offers = $(".pd-ref a");
-    const buyLinks = $(".pd-title a");
-    const websiteLogos = $(".pd-str-logo img");
-    const offerstext = $(".pd-off");
-    const imgs = $(".pd-img img");
+    // await page.waitForSelector(".pd-img img", { timeout: 5000 });
+    // const html = await page.content();
+    // const $ = cheerio.load(html);
+    // const prices = $(".pd-price");
+    // const titles = $(".pd-title a span");
+    // const offers = $(".pd-ref a");
+    // const buyLinks = $(".pd-title a");
+    // const websiteLogos = $(".pd-str-logo img");
+    // const offerstext = $(".pd-off");
+    // const imgs = $(".pd-img img");
 
-    const title = $(titles[0]).text();
-    const offer = $(offers[0]).text();
-    const buyLink = $(buyLinks[0]).attr("href");
-    const websiteLogo = $(websiteLogos[0]).attr("src");
-    $(offerstext[0]).remove();
-    const price = $(prices[0]).text().trim().replace("₹", "");
-    const img = $(imgs[0]).attr("src");
+    // const title = $(titles[0]).text();
+    // const offer = $(offers[0]).text();
+    // const buyLink = $(buyLinks[0]).attr("href");
+    // const websiteLogo = $(websiteLogos[0]).attr("src");
+    // $(offerstext[0]).remove();
+    // const price = $(prices[0]).text().trim().replace("₹", "");
+    // const img = $(imgs[0]).attr("src");
+    const response = await axios.get(
+      `https://pricee.com/api/v1/search.php?q=${topic.title}&size=10&lang=en&vuid=0&platform=1`
+    );
+    const responseData = response.data;
 
+    const items = responseData.data; // Assuming the array of items is stored in the "data" property of the response
+    const extractedData = items.map((item) => {
+      const { title, url, source_logo, discount, source_price, image } = item;
+      return {
+        price: source_price,
+        title: title,
+        offer: `${discount}% off`,
+        buyLink: url,
+        websiteLogo: source_logo,
+        img: image,
+      };
+    });
+    const title = extractedData[0].title;
+    const offer = extractedData[0].offer;
+    const buyLink = extractedData[0].buyLink;
+    const websiteLogo = extractedData[0].websiteLogo;
+    const price = extractedData[0].price;
+    const img = extractedData[0].img;
     console.log(price);
     console.log(img);
     console.log(parseInt(price.replace(",", "").trim()));
@@ -736,7 +763,13 @@ router.post("/unsubscribeFromTopic", async (req, res) => {
         messagetitle += i;
       }
     }
-    admin.messaging().unsubscribeFromTopic(token, messagetitle);
+    admin
+      .messaging()
+      .unsubscribeFromTopic(token, messagetitle)
+      .then(() => {
+        console.log("Unsubscribed from Topic Sucessfully");
+      });
+
     res.sendStatus(200);
   } catch (error) {
     res.sendStatus(500);
