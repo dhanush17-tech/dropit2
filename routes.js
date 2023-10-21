@@ -478,57 +478,39 @@ async function sendNotification() {
         img: image,
       };
     });
-    const title = extractedData[0].title;
-    const offer = extractedData[0].offer;
-    const buyLink = extractedData[0].buyLink;
-    const websiteLogo = extractedData[0].websiteLogo;
-    const price = extractedData[0].price;
-    const img = extractedData[0].img;
-    console.log(price);
-    console.log(img);
-    console.log(parseInt(price.replace(",", "").trim()));
-    console.log(parseInt(topic.price.replace(",", "").trim()));
-    if (
-      parseInt(price.replace(",", "").trim()) <
-      parseInt(topic.price.replace(",", "").trim())
-    ) {
-      console.log("sending message");
-      //sendNotification
-      // Define the notification payload
-      let messagetitle = "";
-      for (const i in topic.title) {
-        if (i != "" || i != "/") {
-          messagetitle += i;
+    //check if extractedData is empty
+    if (extractedData.length != 0) {
+      const title = extractedData[0].title || "";
+      const offer = extractedData[0].offer;
+      const buyLink = extractedData[0].buyLink;
+      const websiteLogo = extractedData[0].websiteLogo;
+      const price = extractedData[0].price;
+      const img = extractedData[0].img;
+      console.log(price);
+      console.log(img);
+      console.log(parseInt(price.replace(",", "").trim()));
+      console.log(parseInt(topic.price.replace(",", "").trim()));
+      if (
+        parseInt(price.replace(",", "").trim()) <
+        parseInt(topic.price.replace(",", "").trim())
+      ) {
+        console.log("sending message");
+        //sendNotification
+        // Define the notification payload
+        let messagetitle = "";
+        for (const i in topic.title) {
+          if (i != "" || i != "/") {
+            messagetitle += i;
+          }
         }
-      }
-      // Send the notification to the device(s)
+        // Send the notification to the device(s)
 
-      try {
-        const message = {
-          topic: "messagetitle",
-          notification: {
-            title: `The sale for ${topic.title} is on 🎉`,
-            imageUrl: img,
-            body: "Check it out right now !",
-          },
-          data: {
-            price: price.replace("₹", ""),
-            title: title,
-            offer: offer,
-            img: img,
-            buyLink: buyLink,
-            websiteLogo: websiteLogo,
-            description: "",
-          },
-        };
-        const response = await admin.messaging().send(message);
-        console.log("Message sent:", response);
-      } catch (error) {
         try {
           const message = {
-            topic: messagetitle,
+            topic: "messagetitle",
             notification: {
               title: `The sale for ${topic.title} is on 🎉`,
+              imageUrl: img,
               body: "Check it out right now !",
             },
             data: {
@@ -544,21 +526,42 @@ async function sendNotification() {
           const response = await admin.messaging().send(message);
           console.log("Message sent:", response);
         } catch (error) {
-          console.log(error);
+          try {
+            const message = {
+              topic: messagetitle,
+              notification: {
+                title: `The sale for ${topic.title} is on 🎉`,
+                body: "Check it out right now !",
+              },
+              data: {
+                price: price.replace("₹", ""),
+                title: title,
+                offer: offer,
+                img: img,
+                buyLink: buyLink,
+                websiteLogo: websiteLogo,
+                description: "",
+              },
+            };
+            const response = await admin.messaging().send(message);
+            console.log("Message sent:", response);
+          } catch (error) {
+            console.log(error);
+          }
         }
-      }
-      const querySnapshot = await db
-        .collection("campaigns")
-        .where("title", "==", topic.title)
-        .get();
-      querySnapshot.docs.forEach((docs) => {
-        docs.ref.update({
-          title: topic.title,
-          price: price.replace(",", "").trim(),
+        const querySnapshot = await db
+          .collection("campaigns")
+          .where("title", "==", topic.title)
+          .get();
+        querySnapshot.docs.forEach((docs) => {
+          docs.ref.update({
+            title: topic.title,
+            price: price.replace(",", "").trim(),
+          });
         });
-      });
-    } else {
-      console.log("not sending");
+      } else {
+        console.log("not sending");
+      }
     }
   }
 }
@@ -666,7 +669,7 @@ cron.schedule("0 9,14,18 * * *", () => {
   // Call your function
   sendNotification();
 });
-// sendNotification();
+sendNotification();
 
 module.exports = router;
 
