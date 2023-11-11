@@ -384,7 +384,7 @@ const page = await browser.newPage();
 const firstProductElement = $('.sh-dgr__content').first();
 
 // Extract the details
-     const productLink = firstProductElement.find('.shntl a').attr('href').replace("/url?url=", "");
+     const productLink = decodeURIComponent(firstProductElement.find('.shntl a').attr('href').replace("/url?url=", ""));
 const productName = firstProductElement.find('.tAxDx').text().trim();
      const productPrice = firstProductElement.find('.a8Pemb').text().trim();
     //  const image=firstProductElement.find('.sh-div__image').attr('src');
