@@ -726,11 +726,11 @@ router.get("/getStoreCoupons", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-cron.schedule("0 9,14,18 * * *", () => {
-  // Call your function
-  sendNotification();
-});
-sendNotification();
+// cron.schedule("0 9,14,18 * * *", () => {
+//   // Call your function
+//   sendNotification();
+// });
+// sendNotification();
 
 module.exports = router;
 
