@@ -372,13 +372,13 @@ async function scrapeProductTitle(upcCode, count) {
 router.get("/googleSearch", async (req, res) => { 
 
   try {
-    const { itemName } = req.body;
+    const { itemName } = req.query;
 
 const shelves = [];
 const browser = await chromium.launch();
 const page = await browser.newPage();
-await page.goto(`https://www.google.com/search?tbm=shop&q=${itemName}`);
-const $ = cheerio.load(await page.content());
+    await page.goto(`https://www.google.com/search?tbm=shop&q=${itemName}`);
+ const $ = cheerio.load(await page.content());
 
 // Select the first product element
 const firstProductElement = $('.sh-dgr__content').first();
@@ -397,7 +397,7 @@ shelves.push({
 //   img
 });
     console.log(shelves);
-    res.json(shelves);
+    res.json(shelves[0]);
 
   } catch { 
 
