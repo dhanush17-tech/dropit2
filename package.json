@@ -29,7 +29,9 @@
     "puppeteer-cluster": "^0.23.0",
     "puppeteer-core": "^20.5.0",
     "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.0"
   },
   "devDependencies": {
     "firebase-functions-test": "^3.1.0"

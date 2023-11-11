@@ -90,6 +90,31 @@ async function getImage(buyLink) {
   }
 }
 
+/**
+ * @openapi
+ * /searchItem:
+ *   get:
+ *     summary: Search for an item
+ *     description: Retrieve items based on the search query
+ *     parameters:
+ *       - in: query
+ *         name: itemName
+ *         required: true
+ *         description: Name of the item to search for
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: A list of search results
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Item'
+ *       500:
+ *         description: Internal Server Error
+ */
 // Route to search for an item
 router.get("/searchItem", async (req, res) => {
   console.log("Started...");
@@ -190,65 +215,66 @@ router.get("/latestDeals", async (req, res) => {
 });
 
 async function fetchData(dealType) {
-  //FROM PRICEE.COM
+  // FROM PRICEE.COM
 
-  // const items = [];
+  const items = [];
 
-  // const browser = await puppeteer.launch();
-  // const page = await browser.newPage();
-  // await page.goto(`https://pricee.com/?q=${dealType}`);
-  // await page.screenshot();
-  // await page.waitForSelector(".pd-price", { timeout: 5000 });
-  // const html = await page.content();
-  // await scrapeProductPage(html, items);
-  // console.log(items);
+  const browser = await puppeteer.launch();
+  const page = await browser.newPage();
+  await page.goto(`https://pricee.com/?q=${dealType}`);
+  await page.screenshot();
+  await page.waitForSelector(".pd-price", { timeout: 5000 });
+  const html = await page.content();
+  await scrapeProductPage(html, items);
+  console.log(items);
 
-  // // Close the browser after fetching the data
+  // Close the browser after fetching the data
 
-  // return items;
+  return items;
 
-  //FROM PRICEBEFORE.COM
 
-  try {
-    const response = await axios.get(
-      `https://www.pricebefore.com/price-drops/?category=${dealType}&direction=desc&sort=price`
-    );
+  // FROM PRICEBEFORE.COM
 
-    const $ = cheerio.load(response.data);
-    const prices = $(".final");
-    const titles = $(".col-right .link");
-    const imgs = $(".col-left img");
-    const buyLinks = $(".btn-wrap a");
-    const offers = $(".percent");
+  // try {
+  //   const response = await axios.get(
+  //     `https://www.pricebefore.com/price-drops/?category=${dealType}&direction=desc&sort=price`
+  //   );
 
-    const fetchItemData = async (index, ele) => {
-      const price = $(ele).text().replace("*", "").replace("₹", "").trim();
-      const title = $(titles[index]).text() || "";
-      const buyLinkElement = buyLinks[index];
-      const buyLink = buyLinkElement ? $(buyLinkElement).attr("href") : "";
-      const offerElement = offers[index];
-      const offer = offerElement ? $(offerElement).text() : "";
-      const img = $(imgs[index]).attr("data-src") || (await getImage(buyLink));
+  //   const $ = cheerio.load(response.data);
+  //   const prices = $(".final");
+  //   const titles = $(".col-right .link");
+  //   const imgs = $(".col-left img");
+  //   const buyLinks = $(".btn-wrap a");
+  //   const offers = $(".percent");
 
-      return {
-        price,
-        title,
-        img,
-        offer,
-        buyLink: `https://pricebefore.com${buyLink}`,
-        description: "",
-        websiteLogo: "",
-      };
-    };
+  //   const fetchItemData = async (index, ele) => {
+  //     const price = $(ele).text().replace("*", "").replace("₹", "").trim();
+  //     const title = $(titles[index]).text() || "";
+  //     const buyLinkElement = buyLinks[index];
+  //     const buyLink = buyLinkElement ? $(buyLinkElement).attr("href") : "";
+  //     const offerElement = offers[index];
+  //     const offer = offerElement ? $(offerElement).text() : "";
+  //     const img = $(imgs[index]).attr("data-src") || (await getImage(buyLink));
 
-    const promises = prices.map(fetchItemData).get();
+  //     return {
+  //       price,
+  //       title,
+  //       img,
+  //       offer,
+  //       buyLink: `https://pricebefore.com${buyLink}`,
+  //       description: "",
+  //       websiteLogo: "",
+  //     };
+  //   };
 
-    const items = await Promise.all(promises);
-    console.log(items.filter((item) => item.img !== ""));
-    return items.filter((item) => item.img !== "");
-  } catch (error) {
-    console.error("Error:", error);
-  }
+  //   const promises = prices.map(fetchItemData).get();
+
+  //   const items = await Promise.all(promises);
+  //   console.log(items.filter((item) => item.img !== ""));
+  //   return items.filter((item) => item.img !== "");
+  // } catch (error) {
+  //   console.error("Error:", error);
+  // }
 }
 function checkIfDataNeedsRefresh(cacheKey) {
   // Get the cached data and its timestamp
