@@ -369,6 +369,41 @@ async function scrapeProductTitle(upcCode, count) {
     .join(" ");
 }
 
+router.get("/googleSearch", async (req, res) => { 
+
+  try {
+    const { itemName } = req.body;
+
+const shelves = [];
+const browser = await chromium.launch();
+const page = await browser.newPage();
+await page.goto(`https://www.google.com/search?tbm=shop&q=${itemName}`);
+const $ = cheerio.load(await page.content());
+
+// Select the first product element
+const firstProductElement = $('.sh-dgr__content').first();
+
+// Extract the details
+     const productLink = firstProductElement.find('.shntl a').attr('href').replace("/url?url=", "");
+const productName = firstProductElement.find('.tAxDx').text().trim();
+     const productPrice = firstProductElement.find('.a8Pemb').text().trim();
+    //  const image=firstProductElement.find('.sh-div__image').attr('src');
+
+// Add to your array
+shelves.push({
+  link: productLink,
+  name: productName,
+    price: productPrice,
+//   img
+});
+    console.log(shelves);
+    res.json(shelves);
+
+  } catch { 
+
+  }
+})
+
 router.post("/addCart", async (req, res) => {
   try {
     const { cartItems, fcmTokenId } = req.body;

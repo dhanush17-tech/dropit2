@@ -17,8 +17,8 @@ const swaggerDefinition = {
   },
   servers: [
     {
-      url: 'http://localhost:3000',
-      description: 'Local server',
+      url: 'http://dropit2-production.up.railway.app',
+      description: 'Production server',
     },
   ],
 };
