@@ -219,7 +219,7 @@ async function fetchData(dealType) {
 
   const items = [];
 
-  const browser = await puppeteer.launch();
+  const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
   const page = await browser.newPage();
   await page.goto(`https://pricee.com/?q=${dealType}`);
   await page.screenshot();
@@ -405,7 +405,7 @@ shelves.push({
   } catch { 
 
   }
-})
+})     
 
 router.post("/addCart", async (req, res) => {
   try {
@@ -729,11 +729,11 @@ router.get("/getStoreCoupons", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-// cron.schedule("0 9,14,18 * * *", () => {
-//   // Call your function
-//   sendNotification();
-// });
-// sendNotification();
+cron.schedule("0 9,14,18 * * *", () => {
+  // Call your function
+  sendNotification();
+});
+sendNotification();
 
 module.exports = router;
 
