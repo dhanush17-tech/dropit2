@@ -30,8 +30,10 @@
     "puppeteer-core": "^20.5.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "redis": "^4.6.11",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.0"
+    "swagger-ui-express": "^5.0.0",
+    "unirest": "^0.6.0"
   },
   "devDependencies": {
     "firebase-functions-test": "^3.1.0"

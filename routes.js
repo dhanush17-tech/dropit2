@@ -1,5 +1,7 @@
 // routes.js
 const express = require("express");
+const unirest = require("unirest");
+
 const router = express.Router();
 const puppeteer = require("puppeteer");
 const admin = require("firebase-admin");
@@ -10,14 +12,21 @@ const cron = require("node-cron");
 const serviceAccount = require("./price-tracker-4cc9b-firebase-adminsdk-8j9qc-d733aeb855.json");
 const { chromium } = require("playwright");
 const NodeCache = require("node-cache");
+const { DateTime } = require("luxon");
 const cache = new NodeCache();
+const Redis = require("redis");
 
+const client = Redis.createClient({
+  password: "w9FMHjTYYgzqLkamivU4bWId9INfumDl",
+  socket: {
+    host: "redis-19228.c281.us-east-1-2.ec2.cloud.redislabs.com",
+    port: 19228,
+  },
+});
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 const db = admin.firestore();
-
-let browserPromise;
 
 (async () => {
   browserPromise = chromium.launch({
@@ -48,6 +57,33 @@ async function addDocument(collection, data) {
     throw new Error("Error adding document: " + error);
   }
 }
+
+const getWebsiteLogo = async (productName) => {
+  try {
+    const query = encodeURIComponent(productName);
+    const searchUrl = `https://www.google.com/search?q=${
+      query.split(" ")[0]
+    } icon logo&tbm=isch`;
+
+    // Set a user-agent
+    const headers = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
+    };
+
+    const response = await axios.get(searchUrl, { headers });
+
+    const $ = cheerio.load(response.data);
+    // Adjust the selector to find the image
+    const websiteLogo = $(".RntSmf").find("img").attr("src");
+
+    return websiteLogo;
+  } catch (error) {
+    console.error("Error fetching website logo:", error);
+    return null;
+  }
+};
+
 async function scrapeProductPage(html, items) {
   const $ = cheerio.load(html);
   const prices = $(".pd-price");
@@ -90,59 +126,32 @@ async function getImage(buyLink) {
   }
 }
 
-/**
- * @openapi
- * /searchItem:
- *   get:
- *     summary: Search for an item
- *     description: Retrieve items based on the search query
- *     parameters:
- *       - in: query
- *         name: itemName
- *         required: true
- *         description: Name of the item to search for
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: A list of search results
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Item'
- *       500:
- *         description: Internal Server Error
- */
-// Route to search for an item
 router.get("/searchItem", async (req, res) => {
   console.log("Started...");
   const { itemName } = req.body;
-  // const items = [];
 
   try {
-    // const browser = await chromium.launch();
-    // const page = await browser.newPage();
-    // await page.goto("https://pricee.com/", { timeout: 0 });
-    // await page.waitForSelector("input[name='q']");
-    // await page.type('input[name="q"]', itemName);
-    // await page.keyboard.press("Enter");
+    const options = {
+      method: "POST",
+      url: "https://dripcrawler.p.rapidapi.com/",
+      headers: {
+        "content-type": "application/json",
+        "X-RapidAPI-Key": "117956f7fdmshd3ef63433d6e4f9p1cf63ajsnc54bcd05084a",
+        "X-RapidAPI-Host": "dripcrawler.p.rapidapi.com",
+      },
+      data: {
+        url: `https://pricee.com/api/v1/search.php?q=${itemName}&size=10&lang=en&page=1&vuid=0&platform=1`,
+        javascript_rendering: "False",
+      },
+    };
+    const response = await axios.request(options);
 
-    // await page.waitForSelector(".pd-img img", { timeout: 5000 });
-    // const html = await page.content();
-    // await scrapeProductPage(html, items);
-    // console.log(items);
-    const response = await axios.get(
-      `https://pricee.com/api/v1/search.php?q=${itemName}&size=10&lang=en&page=1&vuid=0&platform=1`
-    );
-    const responseData = response.data;
-
-    const items = responseData.data; // Assuming the array of items is stored in the "data" property of the response
-    const extractedData = items.map((item) => {
-      const { title, url, source_logo, discount, source_price, image } = item;
+    const responseData = JSON.parse(response.data.extracted_html);
+    console.log(responseData);
+    const extractedData = responseData.data.map((item) => {
+      const { title, url, source_logo, discount, source_mrp, image } = item;
       return {
-        price: source_price,
+        price: source_mrp,
         title: title,
         offer: `${discount}% off`,
         buyLink: url,
@@ -152,130 +161,138 @@ router.get("/searchItem", async (req, res) => {
     });
 
     console.log("Extracted Data:", extractedData);
-    // // Store the data in a list or array
-    // const dataList = data.data.map((item) => ({
-    //   price: item.source_price,
-    //   title: item.title,
-    //   offer: `${item.discount}% off`,
-    //   buyLink: item.url,
-    //   websiteLogo: item.source_logo,
-    // })); // Assuming the API response has a property called 'value'
 
-    // console.log("Data fetched:", dataList);
     res.json(extractedData);
   } catch (error) {
     console.error("Error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
 router.get("/latestDeals", async (req, res) => {
   console.log("Started....");
-  const cacheKey = `latestDeals_${req.body.dealType}`;
 
-  // Check if the data is available in the cache
-  const cachedData = cache.get(cacheKey);
-  if (cachedData) {
-    console.log("Retrieved from cache");
-    res.json(cachedData);
-
-    // Check if the data needs to be refreshed
-    const shouldRefreshData = checkIfDataNeedsRefresh(cacheKey); // Implement your logic to determine if data needs to be refreshed
-
-    if (shouldRefreshData) {
-      console.log("Refreshing cache...");
-      try {
-        // Fetch the updated data
-        const updatedData = await fetchData(req.body.dealType);
-
-        // Update the cache with the new data
-        cache.set(cacheKey, updatedData);
-        console.log("Cache updated with new data");
-      } catch (error) {
-        console.error("Error while fetching updated data:", error);
-      }
+  if (!client.isOpen) {
+    try {
+      await client.connect();
+    } catch (err) {
+      return res.status(500).json({ error: "Redis connection failed" });
     }
-
-    return;
   }
 
+  const { itemName, region, page = 1, limit = 10 } = req.query;
+  console.log(page, limit);
+
+  const cacheKey = `latestDeals_${itemName}_${region}_${page}_${limit}`;
+
   try {
-    // Fetch the initial data
-    const initialData = await fetchData(req.body.dealType);
+    const data = await client.get(cacheKey);
+    if (data) {
+      console.log("Retrieved from cache");
+      return res.json(JSON.parse(data));
+    } else {
+      const initialData = await fetchData(itemName, region, page, page + 10);
+      console.log("Data stored in cache");
 
-    // Store the data in the cache
-    cache.set(cacheKey, initialData);
-    console.log("Data stored in cache");
-
-    res.json(initialData);
-  } catch (error) {
-    console.error("Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+      await client.setEx(cacheKey, 18000, JSON.stringify(initialData));
+      return res.json(initialData);
+    }
+  } catch (err) {
+    console.error("Error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-async function fetchData(dealType) {
-  // FROM PRICEE.COM
+async function fetchData(itemName, region, startIndex, endIndex) {
+  let browser;
 
-  const items = [];
+  try {
+    browser = await puppeteer.launch();
+    const page = await browser.newPage();
+    await page.goto(
+      `https://www.google.com/search?q=${itemName}&tbm=shop&gl=${region}&tbs=mr:1,sales:1&hl=en`
+    );
+    await page.screenshot({ path: "path.png" });
+    // await page.waitForSelector(".sh-dgr__content img", { timeout: 5000 });
+    await page.screenshot({ path: "path2.png" });
 
-  const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-  const page = await browser.newPage();
-  await page.goto(`https://pricee.com/?q=${dealType}`);
-  await page.screenshot();
-  await page.waitForSelector(".pd-price", { timeout: 5000 });
-  const html = await page.content();
-  await scrapeProductPage(html, items);
-  console.log(items);
+    const content = await page.content();
+    const $ = cheerio.load(content);
 
-  // Close the browser after fetching the data
+    const firstProductElements = $(".sh-dgr__content").slice(
+      startIndex,
+      endIndex
+    );
+    const shelvesData = await Promise.all(
+      firstProductElements.map(async (i, el) => {
+        const productName = $(el).find(".tAxDx").text().trim();
+        const productLink = decodeURIComponent(
+          $(el)
+            .find(".shntl a")
+            .attr("href")
+            .replace("/url?url=", "")
+            .replace("http://www.google.com", "")
+        );
+        const productPrice = $(el).find(".a8Pemb").text().trim();
+        const img = $(el).find(".ArOc1c img").first().attr("src");
+        const websiteName = extractWebsiteName($(el).find(".aULzUe").text());
+        const websiteLogo = await getWebsiteLogo(websiteName);
 
-  return items;
+        let offer =
+          $(el).find(".LGq5Zc").text().trim() ||
+          $(el).find(".VRpiue").text().trim() ||
+          $(el).find(".zY3Xhe").text().trim() ||
+          "";
 
+        return {
+          buyLink: productLink,
+          title: productName,
+          price: productPrice,
+          img,
+          websiteLogo,
+          websiteName,
+          offer:
+            $(el).find(".zY3Xhe").text().trim() !== ""
+              ? `Was ${$(el).find(".zY3Xhe").text().trim()}`
+              : offer,
+        };
+      })
+    );
 
-  // FROM PRICEBEFORE.COM
-
-  // try {
-  //   const response = await axios.get(
-  //     `https://www.pricebefore.com/price-drops/?category=${dealType}&direction=desc&sort=price`
-  //   );
-
-  //   const $ = cheerio.load(response.data);
-  //   const prices = $(".final");
-  //   const titles = $(".col-right .link");
-  //   const imgs = $(".col-left img");
-  //   const buyLinks = $(".btn-wrap a");
-  //   const offers = $(".percent");
-
-  //   const fetchItemData = async (index, ele) => {
-  //     const price = $(ele).text().replace("*", "").replace("₹", "").trim();
-  //     const title = $(titles[index]).text() || "";
-  //     const buyLinkElement = buyLinks[index];
-  //     const buyLink = buyLinkElement ? $(buyLinkElement).attr("href") : "";
-  //     const offerElement = offers[index];
-  //     const offer = offerElement ? $(offerElement).text() : "";
-  //     const img = $(imgs[index]).attr("data-src") || (await getImage(buyLink));
-
-  //     return {
-  //       price,
-  //       title,
-  //       img,
-  //       offer,
-  //       buyLink: `https://pricebefore.com${buyLink}`,
-  //       description: "",
-  //       websiteLogo: "",
-  //     };
-  //   };
-
-  //   const promises = prices.map(fetchItemData).get();
-
-  //   const items = await Promise.all(promises);
-  //   console.log(items.filter((item) => item.img !== ""));
-  //   return items.filter((item) => item.img !== "");
-  // } catch (error) {
-  //   console.error("Error:", error);
-  // }
+    console.log(shelvesData);
+    return shelvesData;
+  } catch (error) {
+    console.error("Error:", error);
+    throw new Error("Internal Server Error");
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
 }
+
+function extractWebsiteName(websiteNameString) {
+  const parts = websiteNameString.split("}");
+  return parts.length > 0 ? parts[parts.length - 1].trim() : null;
+}
+// FROM PRICEE.COM
+
+// const items = [];
+
+// const browser = await puppeteer.launch({
+//   args: ["--no-sandbox", "--disable-setuid-sandbox"],
+// });
+// const page = await browser.newPage();
+// await page.goto(`https://pricee.com/?q=${dealType}`);
+// await page.screenshot();
+// await page.waitForSelector(".pd-price", { timeout: 5000 });
+// const html = await page.content();
+// await scrapeProductPage(html, items);
+// console.log(items);
+
+// // Close the browser after fetching the data
+
+// return items;
+
 function checkIfDataNeedsRefresh(cacheKey) {
   // Get the cached data and its timestamp
   const cachedData = cache.get(cacheKey);
@@ -303,40 +320,116 @@ function checkIfDataNeedsRefresh(cacheKey) {
   return false;
 }
 
+async function getFirst4WordsFromGoogleSearch(query) {
+  // try {
+  //   // Launch a headless browser using Puppeteer
+  //   const browser = await puppeteer.launch();
+  //   const page = await browser.newPage();
+
+  //   // Navigate to Google Images
+  //   await page.goto(
+  //     `https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=isch`
+  //   );
+
+  //   // Wait for the page to load completely (you can adjust the wait time as needed)
+  //   await page.waitForSelector(".rg_i");
+  //   await page.screenshot({ path: "path2.png" });
+
+  //   // Get the HTML content of the page
+  //   const html = await page.content();
+
+  //   // Load the HTML content into Cheerio
+  //   const $ = cheerio.load(html);
+
+  //   // Find the title of the first image result (assuming it's inside an <a> element)
+  //   const firstResultTitle = $("a .rg_i").first().attr("alt");
+
+  //   // Close the Puppeteer browser
+  //   await browser.close();
+
+  //   return firstResultTitle.slice(0, 4);
+  // } catch (error) {
+  //   console.error("Error scraping Google Images:", error);
+  //   return null;
+  // }
+  try {
+    const headers = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
+    };
+    const response = await axios.get(`https://www.buycott.com/upc/${query}`, {
+      headers: headers,
+    });
+    const $ = cheerio.load(response.data);
+    const title = $("h2").eq(0).text();
+    console.log(title);
+    return title;
+  } catch (error) {
+    console.error("An error occurred:", error);
+    throw error;
+  }
+}
+
 router.get("/barcodeScan", async (req, res) => {
   console.log("Barcode scan started");
 
-  const upcCode = req.body.barcodeId;
-  console.log("This is code " + upcCode);
+  const { upcCode, region } = req.query;
+  getFirst4WordsFromGoogleSearch(upcCode).then(async (title) => {
+    console.log(title);
+    try {
+      console.log(upcCode, region);
+      const browser = await chromium.launch();
+      const page = await browser.newPage();
 
-  try {
-    let productTitle = await scrapeProductTitle(upcCode, 3);
-    console.log(productTitle);
-    console.log("first");
+      await page.goto(
+        `https://www.google.com/search?tbm=shop&q=${title}&tbm=shop&gl=${region}&tbs=mr:1,sales:1&hl=en`
+      );
+      await page.screenshot({ path: "path2.png" });
+      const $ = cheerio.load(await page.content());
+      await browser.close();
 
-    let extractedData = await fetchProductData(productTitle);
-    if (!extractedData[0].title.includes(productTitle)) {
-      console.log("second");
+      // Select the first product elements
+      const firstProductElements = $(".sh-dgr__content").slice(0, 10);
 
-      productTitle = await scrapeProductTitle(upcCode, 2);
-      console.log(productTitle);
-      extractedData = await fetchProductData(productTitle);
+      const websiteLogoPromises = firstProductElements.map(async (i, el) => {
+        const productName = $(el).find(".tAxDx").text().trim();
+        const productLink = decodeURIComponent(
+          $(el).find(".shntl a").attr("href").replace("/url?url=", "")
+        );
+        const productPrice = $(el).find(".a8Pemb").text().trim();
+        const img = $(el).find(".ArOc1c img").first().attr("src");
+        const websiteName = extractWebsiteName($(el).find(".aULzUe").text());
+        const websiteLogo = await getWebsiteLogo(websiteName);
+
+        let offer =
+          $(el).find(".LGq5Zc").text().trim() ||
+          $(el).find(".VRpiue").text().trim() ||
+          $(el).find(".zY3Xhe").text().trim() ||
+          "";
+
+        return {
+          buyLink: decodeURIComponent(productLink),
+          title: productName,
+          price: productPrice,
+          img: img,
+          websiteLogo: websiteLogo,
+          offer:
+            $(el).find(".zY3Xhe").text().trim() !== ""
+              ? `Was ${$(el).find(".zY3Xhe").text().trim()}`
+              : offer,
+        };
+      });
+
+      // Use Promise.all to wait for all websiteLogoPromises to resolve
+      const shelvesData = await Promise.all(websiteLogoPromises);
+
+      console.log(shelvesData);
+      res.json(shelvesData);
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: "An error occurred" });
     }
-
-    if (!extractedData[0].title.includes(productTitle)) {
-      console.log("third");
-
-      productTitle = await scrapeProductTitle(upcCode, 1);
-      console.log(productTitle);
-      extractedData = await fetchProductData(productTitle);
-    }
-
-    console.log(extractedData);
-    res.json(extractedData);
-  } catch (error) {
-    console.error("Error:", error);
-    res.status(500).json({ error: "An error occurred" });
-  }
+  });
 });
 
 async function fetchProductData(productTitle) {
@@ -368,44 +461,77 @@ async function scrapeProductTitle(upcCode, count) {
     .slice(0, count ?? title.split(" ").length)
     .join(" ");
 }
-
-router.get("/googleSearch", async (req, res) => { 
-
-  try {
-    const { itemName } = req.query;
-
-const shelves = [];
-const browser = await chromium.launch();
-const page = await browser.newPage();
-    await page.goto(`https://www.google.com/search?tbm=shop&q=${itemName}`);
- const $ = cheerio.load(await page.content());
-
-// Select the first product element
-const firstProductElement = $('.sh-dgr__content').first();
-
-// Extract the details
-     const productLink = decodeURIComponent(firstProductElement.find('.shntl a').attr('href').replace("/url?url=", ""));
-    const productName = firstProductElement.find('.tAxDx').text().trim();
-      const img = firstProductElement.find('.ArOc1c img').first().attr("src");
- 
-     const productPrice = firstProductElement.find('.a8Pemb').text().trim();
-    //  const image=firstProductElement.find('.sh-div__image').attr('src');
-
-// Add to your array
-shelves.push({
-  link: productLink,
-  name: productName,
-  price: productPrice,
-    img:img
-//   img
-});
-    console.log(shelves);
-    res.json(shelves[0]);
-
-  } catch { 
-
+router.get("/googleSearch", async (req, res) => {
+  if (!client.isOpen) {
+    await client.connect();
   }
-})     
+  try {
+    const { itemName, region } = req.query;
+    const cacheKey = `googleSearch_${itemName}_${region}`;
+
+    // Check if data is in cache
+    const cachedData = await client.get(cacheKey);
+    if (cachedData) {
+      console.log("Retrieved from cache");
+      return res.json(JSON.parse(cachedData));
+    }
+
+    console.log(itemName, region);
+    const browser = await chromium.launch();
+    const page = await browser.newPage();
+
+    await page.goto(
+      `https://www.google.com/search?tbm=shop&q=${encodeURIComponent(
+        itemName
+      )}&gl=${encodeURIComponent(region)}&hl=en`
+    );
+    await page.screenshot({ path: "path2.png" });
+    const $ = cheerio.load(await page.content());
+    await browser.close();
+
+    const firstProductElements = $(".sh-dgr__content").slice(0, 10);
+
+    const websiteLogoPromises = firstProductElements.map(async (i, el) => {
+      const productName = $(el).find(".tAxDx").text().trim();
+      const productLink = decodeURIComponent(
+        $(el).find(".shntl a").attr("href").replace("/url?url=", "")
+      );
+      const productPrice = $(el).find(".a8Pemb").text().trim();
+      const img = $(el).find(".ArOc1c img").first().attr("src");
+      const websiteName = extractWebsiteName($(el).find(".aULzUe").text());
+      const websiteLogo = await getWebsiteLogo(websiteName);
+
+      let offer =
+        $(el).find(".LGq5Zc").text().trim() ||
+        $(el).find(".VRpiue").text().trim() ||
+        $(el).find(".zY3Xhe").text().trim() ||
+        "";
+
+      return {
+        buyLink: decodeURIComponent(productLink),
+        title: productName,
+        price: productPrice,
+        img: img,
+        websiteLogo: websiteLogo,
+        offer:
+          $(el).find(".zY3Xhe").text().trim() !== ""
+            ? `Was ${$(el).find(".zY3Xhe").text().trim()}`
+            : offer,
+      };
+    });
+
+    const shelvesData = await Promise.all(websiteLogoPromises);
+    console.log(shelvesData);
+
+    // Cache the scraped data
+    await client.setEx(cacheKey, 1800, JSON.stringify(shelvesData)); // Cache for 1 hour
+
+    res.json(shelvesData);
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 
 router.post("/addCart", async (req, res) => {
   try {
@@ -432,7 +558,8 @@ router.post("/addCart", async (req, res) => {
           console.log(data.title + data.price);
           addDocument("campaigns", {
             title: data.title,
-            price: data.price.replace(",", ""),
+            price: data.price.substring(1),
+            region: data.region,
           });
           await admin.messaging().subscribeToTopic(fcmTokenId, messagetitle);
           console.log("Topic created successfully");
@@ -462,7 +589,11 @@ async function getCampaigns() {
     const topics = [];
     const doc = (await db.collection("campaigns").get()).forEach((d) => {
       console.log(d.data().title);
-      topics.push({ title: d.data().title, price: d.data().price });
+      topics.push({
+        title: d.data().title,
+        price: d.data().price,
+        region: d.data().region,
+      });
     });
     return topics;
   } catch (error) {
@@ -496,139 +627,264 @@ async function sendNotification() {
   for (const campaign of campaigns) {
     const topic = campaign;
     console.log("Processing campaign:", topic);
+    if (topic.region) {
+      try {
+        browser = await puppeteer.launch();
+        const page = await browser.newPage();
+        await page.goto(
+          `https://www.google.com/search?q=${topic.title}&tbm=shop&gl=${topic.region}&tbs=mr:1,sales:1&hl=en x`
+        );
 
-    // Perform actions for each campaign
-    // For example, send a message to the devices subscribed to the campaign
-    // const browser = await browserPromise;
-    // const page = await browser.newPage();
-    // await page.goto("https://pricee.com/");
-    // await page.type('input[name="q"]', topic.title);
-    // await page.keyboard.press("Enter");
+        const content = await page.content();
+        const $ = cheerio.load(content);
 
-    // await page.waitForSelector(".pd-img img", { timeout: 5000 });
-    // const html = await page.content();
-    // const $ = cheerio.load(html);
-    // const prices = $(".pd-price");
-    // const titles = $(".pd-title a span");
-    // const offers = $(".pd-ref a");
-    // const buyLinks = $(".pd-title a");
-    // const websiteLogos = $(".pd-str-logo img");
-    // const offerstext = $(".pd-off");
-    // const imgs = $(".pd-img img");
+        const firstProductElements = $(".sh-dgr__content").slice(0, 1);
+        const extractedData = await Promise.all(
+          firstProductElements.map(async (i, el) => {
+            const productName = $(el).find(".tAxDx").text().trim();
+            const productLink = decodeURIComponent(
+              $(el)
+                .find(".shntl a")
+                .attr("href")
+                .replace("/url?url=", "")
+                .replace("http://www.google.com", "")
+            );
+            const productPrice = $(el).find(".a8Pemb").text().trim();
+            const img = $(el).find(".ArOc1c img").first().attr("src");
+            const websiteName = extractWebsiteName(
+              $(el).find(".aULzUe").text()
+            );
+            const websiteLogo = await getWebsiteLogo(websiteName);
 
-    // const title = $(titles[0]).text();
-    // const offer = $(offers[0]).text();
-    // const buyLink = $(buyLinks[0]).attr("href");
-    // const websiteLogo = $(websiteLogos[0]).attr("src");
-    // $(offerstext[0]).remove();
-    // const price = $(prices[0]).text().trim().replace("₹", "");
-    // const img = $(imgs[0]).attr("src");
-    const response = await axios.get(
-      `https://pricee.com/api/v1/search.php?q=${encodeURI(
-        topic.title
-      )}&size=10&lang=en&vuid=0&platform=1`
-    );
-    const responseData = response.data;
+            let offer =
+              $(el).find(".LGq5Zc").text().trim() ||
+              $(el).find(".VRpiue").text().trim() ||
+              $(el).find(".zY3Xhe").text().trim() ||
+              "";
 
-    const items = responseData.data; // Assuming the array of items is stored in the "data" property of the response
-    const extractedData = items.map((item) => {
-      const { title, url, source_logo, discount, source_price, image } = item;
-      return {
-        price: source_price,
-        title: title,
-        offer: `${discount}% off`,
-        buyLink: url,
-        websiteLogo: source_logo,
-        img: image,
-      };
-    });
-    //check if extractedData is empty
-    if (extractedData.length != 0) {
-      const title = extractedData[0].title || "";
-      const offer = extractedData[0].offer;
-      const buyLink = extractedData[0].buyLink;
-      const websiteLogo = extractedData[0].websiteLogo;
-      const price = extractedData[0].price;
-      const img = extractedData[0].img;
-      console.log(price);
-      console.log(img);
-      console.log(parseInt(price.replace(",", "").trim()));
-      console.log(parseInt(topic.price.replace(",", "").trim()));
-      if (
-        parseInt(price.replace(",", "").trim()) <
-        parseInt(topic.price.replace(",", "").trim())
-      ) {
-        console.log("sending message");
-        //sendNotification
-        // Define the notification payload
-        let messagetitle = "";
-        for (const i in topic.title) {
-          if (i != "" || i != "/") {
-            messagetitle += i;
-          }
-        }
-        // Send the notification to the device(s)
+            return {
+              buyLink: productLink,
+              title: productName,
+              price: productPrice,
+              img,
+              websiteLogo,
+              websiteName,
+              offer:
+                $(el).find(".zY3Xhe").text().trim() !== ""
+                  ? `Was ${$(el).find(".zY3Xhe").text().trim()}`
+                  : offer,
+            };
+          })
+        );
 
-        try {
-          const message = {
-            topic: "messagetitle",
-            notification: {
-              title: `The sale for ${topic.title} is on 🎉`,
-              imageUrl: img,
-              body: "Check it out right now !",
-            },
-            data: {
-              price: price.replace("₹", ""),
-              title: title,
-              offer: offer,
-              img: img,
-              buyLink: buyLink,
-              websiteLogo: websiteLogo,
-              description: "",
-            },
-          };
-          const response = await admin.messaging().send(message);
-          console.log("Message sent:", response);
-        } catch (error) {
-          try {
+        //check if extractedData is empty
+        if (extractedData.length != 0) {
+          const title = extractedData[0].title || "";
+          const offer = extractedData[0].offer;
+          const buyLink = extractedData[0].buyLink;
+          const websiteLogo = extractedData[0].websiteLogo;
+          const price = extractedData[0].price.substring(1);
+          const img = extractedData[0].img;
+          console.log(price);
+          console.log(img);
+          console.log(parseInt(price.trim()));
+          console.log(parseInt(topic.price.trim()));
+          if (parseInt(price.trim()) < parseInt(topic.price.trim())) {
+            console.log(price, title, offer, img, buyLink, websiteLogo);
+            console.log("sending message");
+
+            let messagetitle = "";
+            for (const i in topic.title) {
+              if (i != "" || i != "/") {
+                messagetitle += i;
+              }
+            }
+
             const message = {
               topic: messagetitle,
               notification: {
                 title: `The sale for ${topic.title} is on 🎉`,
+                imageUrl: img,
                 body: "Check it out right now !",
               },
               data: {
-                price: price.replace("₹", ""),
+                price: price,
                 title: title,
                 offer: offer,
                 img: img,
                 buyLink: buyLink,
                 websiteLogo: websiteLogo,
                 description: "",
+                region: region,
               },
             };
             const response = await admin.messaging().send(message);
             console.log("Message sent:", response);
-          } catch (error) {
-            console.log(error);
+
+            const querySnapshot = await db
+              .collection("campaigns")
+              .where("title", "==", topic.title)
+              .get();
+            querySnapshot.docs.forEach((docs) => {
+              docs.ref.update({
+                title: topic.title,
+                price: price,
+              });
+            });
+          } else {
+            console.log("not sending");
           }
         }
-        const querySnapshot = await db
-          .collection("campaigns")
-          .where("title", "==", topic.title)
-          .get();
-        querySnapshot.docs.forEach((docs) => {
-          docs.ref.update({
-            title: topic.title,
-            price: price.replace(",", "").trim(),
-          });
-        });
-      } else {
-        console.log("not sending");
+      } catch (error) {
+        console.log(error);
       }
     }
   }
 }
+
+// async function sendNotification() {
+//   const campaigns = await getCampaigns();
+//   for (const campaign of campaigns) {
+//     const topic = campaign;
+//     console.log("Processing campaign:", topic);
+
+//        // Replace Puppeteer with Axios to fetch the page content
+//        const response = await axios.get(
+//          `https://www.google.com/search?q=${encodeURIComponent(
+//            topic.title
+//          )}&tbm=shop&gl=${topic.region}&tbs=mr:1,sales:1`,
+//           { "User-Agent": "Mozilla/5.0 ..." }
+//        );
+//      console.log(response.data);
+// console.log("Number of elements matched:", $(".sh-dgr__content").length);
+
+//        // Rest of your scraping logic using Cheerio
+//        const firstProductElements = $(".sh-dgr__content").slice(
+//          0,
+//          2
+//        );
+//        const extractedData = firstProductElements
+//          .map((i, el) => {
+//            const productName = $(el).find(".tAxDx").text().trim();
+//            const productLink = decodeURIComponent(
+//              $(el)
+//                .find(".shntl a")
+//                .attr("href")
+//                .replace("/url?url=", "")
+//                .replace("http://www.google.com", "")
+//            );
+//            const productPrice = $(el).find(".a8Pemb").text().trim();
+//            const img = $(el).find(".ArOc1c img").first().attr("src");
+//            const websiteName = extractWebsiteName($(el).find(".aULzUe").text());
+//            // Note: getWebsiteLogo function needs to be compatible with Axios and Cheerio
+//            const websiteLogo = ""; // Placeholder, implement getWebsiteLogo logic
+
+//            let offer =
+//              $(el).find(".LGq5Zc").text().trim() ||
+//              $(el).find(".VRpiue").text().trim() ||
+//              $(el).find(".zY3Xhe").text().trim() ||
+//              "";
+
+//            return {
+//              buyLink: productLink,
+//              title: productName,
+//              price: productPrice,
+//              img,
+//              websiteLogo,
+//              websiteName,
+//              offer:
+//                $(el).find(".zY3Xhe").text().trim() !== ""
+//                  ? `Was ${$(el).find(".zY3Xhe").text().trim()}`
+//                  : offer,
+//            };
+//          })
+//          .get(); // Convert Cheerio object to array
+// console.log("This is the extaced",extractedData)
+//        //check if extractedData is empty
+//        if (extractedData.length !== 0) {
+//          const title = extractedData[0].title || "";
+//          const offer = extractedData[0].offer;
+//          const buyLink = extractedData[0].buyLink;
+//          const websiteLogo = extractedData[0].websiteLogo;
+//          const price = extractedData[0].price.substring(1);
+//          const img = extractedData[0].img;
+//          console.log(price);
+//          console.log(img);
+//          console.log(parseInt(price.trim()));
+//          console.log(parseInt(topic.price.trim()));
+//          if (parseInt(price.trim()) < parseInt(topic.price.trim())) {
+//            console.log("sending message");
+//            //sendNotification
+//            // Define the notification payload
+//            let messagetitle = "";
+//            for (const i in topic.title) {
+//              if (i != "" || i != "/") {
+//                messagetitle += i;
+//              }
+//            }
+//            // Send the notification to the device(s)
+
+//            try {
+//              const message = {
+//                topic: "messagetitle",
+//                notification: {
+//                  title: `The sale for ${topic.title} is on 🎉`,
+//                  imageUrl: img,
+//                  body: "Check it out right now !",
+//                },
+//                data: {
+//                  price: price,
+//                  title: title,
+//                  offer: offer,
+//                  img: img,
+//                  buyLink: buyLink,
+//                  websiteLogo: websiteLogo,
+//                  description: "",
+//                },
+//              };
+//              const response = await admin.messaging().send(message);
+//              console.log("Message sent:", response);
+//            } catch (error) {
+//              try {
+//                const message = {
+//                  topic: messagetitle,
+//                  notification: {
+//                    title: `The sale for ${topic.title} is on 🎉`,
+//                    body: "Check it out right now !",
+//                  },
+//                  data: {
+//                    price: price,
+//                    title: title,
+//                    offer: offer,
+//                    img: img,
+//                    buyLink: buyLink,
+//                    websiteLogo: websiteLogo,
+//                    description: "",
+//                  },
+//                };
+//                const response = await admin.messaging().send(message);
+//                console.log("Message sent:", response);
+//              } catch (error) {
+//                console.log(error);
+//              }
+//            }
+//            const querySnapshot = await db
+//              .collection("campaigns")
+//              .where("title", "==", topic.title)
+//              .get();
+//            querySnapshot.docs.forEach((docs) => {
+//              docs.ref.update({
+//                title: topic.title,
+//                price: price,
+//              });
+//            });
+//          } else {
+//            console.log("not sending");
+//          }
+//        }
+
+//   }
+// }
 
 router.post("/unsubscribeFromTopic", async (req, res) => {
   try {
@@ -651,34 +907,6 @@ router.post("/unsubscribeFromTopic", async (req, res) => {
     res.sendStatus(500);
   }
 });
-
-// router.get("/getDealBanners", async (req, res) => {
-//   console.log("Started...");
-//   try {
-//     const response = await axios.get(
-//       "https://flipshope.com/_next/data/wHnVSA0XP4h-4zh2w2Ln3/home.json"
-//     );
-//     const responseData = response.data;
-
-//     const items = responseData.pageProps; // Assuming the array of items is stored in the "data" property of the response
-//     const extractedData = {
-//       banners: items.bannersData.data.map((data) => ({
-//         img_url: data.img_url,
-//         url: data.url,
-
-//       })),
-//       salesList: items.salesListData.data.map((data) => ({
-//         img_url: data.img_url,
-//         url: data.url,
-//         title: data.title,
-//       })),
-//     };
-
-//    } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ error: "Internal server error" });
-//   }
-// });
 
 router.get("/getStores", async (req, res) => {
   console.log("Started...");
@@ -705,30 +933,161 @@ router.get("/getStores", async (req, res) => {
   }
 });
 
-router.get("/getStoreCoupons", async (req, res) => {
-  console.log("Started...");
-  const { store } = req.body;
-  console.log(store);
+async function getFirstGoogleSearchLink(query) {
   try {
+    // Replace spaces in the query with '+'
+    const formattedQuery = query.split(" ").join("+");
+
+    // Make a request to Google Search
     const response = await axios.get(
-      `https://flipshope.com/_next/data/wHnVSA0XP4h-4zh2w2Ln3/stores/${store}.json?`
+      `https://www.google.com/search?q=${formattedQuery}`,
+      { "User-Agent": "Mozilla/5.0 ..." }
     );
-    const responseData = response.data;
-    const items =
-      responseData.pageProps.storeWithCouponsData.recentCouponsByStores; // Assuming the array of items is stored in the "data" property of the response
 
-    const extractedData = items.map((data) => ({
-      coupon_Code: data.Coupon_Code,
-      coupon_Title: data.Coupon_Title,
-      very_Short_Title: data.Very_Short_Title,
-    }));
+    // Load the HTML content into Cheerio
+    const $ = cheerio.load(response.data);
 
-    res.json(extractedData);
+    // Find the first search result link
+    const firstLink = $('a[href^="/url?q="]').first().attr("href");
+
+    // Google search results contain additional parameters in the URL, so we need to clean it
+    const cleanLink = firstLink.split("&")[0].replace("/url?q=", "");
+
+    return decodeURIComponent(cleanLink);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("Error fetching Google search results:", error);
+    return null;
+  }
+}
+router.get("/latestCoupons", async (req, res) => {
+  console.log("Fetching Coupons...");
+  const cacheKey = "latestCoupons";
+  if (!client.isOpen) {
+    client.connect();
+  }
+  try {
+    // Check cache first
+    const cachedCoupons = await client.get(cacheKey);
+    if (cachedCoupons) {
+      console.log("Retrieved from cache");
+      return res.json(JSON.parse(cachedCoupons));
+    }
+
+    // Fetch data if not in cache
+    const response = await axios.get("https://www.coupons.com/");
+    const $ = cheerio.load(response.data);
+    const couponsList = $("._1otx6d61._1otx6d64");
+    let couponPromises = [];
+
+    couponsList.each((i, elem) => {
+      $(elem)
+        .children()
+        .each((j, childElem) => {
+          const couponPromise = (async () => {
+            const coupon = $(childElem);
+            const expirationDate = coupon.find("._1h7rm4ny").text().trim();
+            const couponTitle = coupon.find("._1h7rm4nv").text().trim();
+            const couponDiscount = coupon.find("._1h7rm4nw").text().trim();
+            const couponDescription = coupon.find("._1h7rm4nx").text().trim();
+            const couponImgElement = coupon.find(".zzw2814 img");
+            const couponImg =
+              couponImgElement.length > 0
+                ? couponImgElement.attr("src").replaceAll("96x", "600x")
+                : "";
+
+            let couponLink = "";
+            if (couponTitle !== "") {
+              couponLink = await getFirstGoogleSearchLink(couponTitle);
+            }
+
+            return {
+              coupon_Code: couponLink,
+              coupon_Title: couponTitle,
+              coupon_Discount: couponDiscount,
+              couponLink,
+              img_url: couponImg,
+              coupon_Description: couponDescription,
+              expirationDate: expirationDate,
+            };
+          })();
+
+          couponPromises.push(couponPromise);
+        });
+    });
+
+    const coupons = await Promise.all(couponPromises);
+    const filteredCoupons = coupons.filter(
+      (coupon) => coupon.coupon_Title !== ""
+    );
+
+    // Cache the result
+    await client.setEx(cacheKey, 3600, JSON.stringify(filteredCoupons));
+    res.json(filteredCoupons);
+  } catch (error) {
+    console.error("Error fetching coupons: ", error);
+    res.status(500).send("Error fetching coupons");
   }
 });
+
+router.get("/productDetails", async (req, res) => {
+  const { title } = req.query;
+  const cacheKey = `productDetails_${title}`;
+
+  if (!client.isOpen) {
+    await client.connect();
+  }
+
+  try {
+    // Check cache first
+    const cachedDetails = await client.get(cacheKey);
+    if (cachedDetails) {
+      console.log("Retrieved from cache");
+      return res.json(JSON.parse(cachedDetails));
+    }
+
+    // Fetch data if not in cache
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+
+    const firstFourWords = title.split(" ").slice(0, 4).join(" ");
+    await page.goto(
+      `https://www.google.com/search?q=product description ${firstFourWords}`
+    );
+    const descriptionSelector = ".LGOjhe .ILfuVd";
+    const descriptionExists = (await page.$(descriptionSelector)) !== null;
+    const description = descriptionExists
+      ? await page.evaluate(
+          (sel) => document.querySelector(sel).innerText.trim(),
+          descriptionSelector
+        )
+      : "";
+
+    await page.goto(
+      `https://www.google.com/search?q=product rating ${firstFourWords}`
+    );
+    const ratingSelector = "span.z3HNkc";
+    const ratingExists = (await page.$(ratingSelector)) !== null;
+    const ratingText = ratingExists
+      ? await page.evaluate(
+          (sel) => document.querySelector(sel).getAttribute("aria-label"),
+          ratingSelector
+        )
+      : "";
+    const rating = ratingText
+      ? ratingText.replace("Rated ", "").split(" ")[0]
+      : "";
+
+    // Cache the result
+    const details = { description, rating };
+    await client.setEx(cacheKey, 3600, JSON.stringify(details));
+    res.json(details);
+  } catch (error) {
+    console.error("Error fetching product details:", error);
+    res.status(500).send("Error fetching product details");
+  } finally {
+  }
+});
+
 cron.schedule("0 9,14,18 * * *", () => {
   // Call your function
   sendNotification();
@@ -736,162 +1095,3 @@ cron.schedule("0 9,14,18 * * *", () => {
 sendNotification();
 
 module.exports = router;
-
-// router.get("/getInfo", async (req, res) => {
-//   try {
-//     const { title, buyLink } = req.query;
-
-//     const searchUrl = `https://www.amazon.in/s?k=${title}&crid=232C26IU722R5&sprefix=m%2Caps%2C295&ref=nb_sb_noss_2`;
-//     const searchResponse = await axios.get(searchUrl, {
-//       headers: {
-//         "User-Agent":
-//           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
-//         Accept:
-//           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-//         "Accept-Encoding": "gzip, deflate, br",
-//         "Accept-Language": "en-US,en;q=0.9",
-//       },
-//     });
-
-//     const $ = cheerio.load(searchResponse.data);
-//     const shelves = [];
-//     const productElements = $(".s-result-item").slice(2, 3);
-
-//     await Promise.all(
-//       productElements.map(async (i, productElement) => {
-//         const shelf = $(productElement);
-//         const images = [];
-//         const imageElements = shelf.find("img.s-image");
-//         imageElements.each((j, imageElement) => {
-//           const image = $(imageElement).attr("src") || "";
-//           images.push(image);
-//         });
-
-//         const totalReviewsElement = shelf.find(
-//           "div.a-section.a-spacing-none.a-spacing-top-micro > div.a-row.a-size-small > span:last-child"
-//         );
-//         const totalReviews = totalReviewsElement.attr("aria-label") || "";
-
-//         const starsElement = shelf.find(
-//           "div.a-section.a-spacing-none.a-spacing-top-micro > div > span"
-//         );
-//         const stars = starsElement.attr("aria-label") || "";
-
-//         const productTitleElement = shelf.find(
-//           "span.a-size-base-plus.a-color-base.a-text-normal"
-//         );
-//         const productTitle = productTitleElement.text() || "";
-
-//         let modifiedBuyLink = buyLink; // Store the original buyLink to prevent mutation
-//         if (buyLink.includes("pricebefore.com")) {
-//           const buyLinkResponse = await axios.get(buyLink);
-//           const p = cheerio.load(buyLinkResponse.data);
-//           modifiedBuyLink = p(".buy-button a").attr("href") || "";
-//         }
-
-//         const link = shelf.find("a.a-link-normal.a-text-normal").attr("href");
-//         const amazonLink = link ? `https://amazon.in${link}` : "";
-
-//         const element = {
-//           images,
-//           buyLink: modifiedBuyLink,
-//           amazonLink,
-//         };
-
-//         if (totalReviews) {
-//           element.totalReviews = totalReviews;
-//         }
-
-//         if (stars) {
-//           element.ratings = stars.replace("out of 5 stars", "").trim();
-//         }
-
-//         shelves.push(element);
-//       })
-//     );
-
-//     res.json(shelves);
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ error: "Internal server error" });
-//   }
-// });
-
-// router.get("/getDescription", async (req, res) => {
-//   const { amazonLink } = req.body; // Use req.query instead of req.body to retrieve the query parameter
-
-//   console.log(amazonLink);
-//   console.log("Fetching Description...");
-
-//   try {
-//     const descriptionResponse = await axios.get(amazonLink, config);
-//     const $$ = cheerio.load(descriptionResponse.data);
-//     const description = $$("#feature-bullets")
-//       .text()
-//       .replace("About this item", "")
-//       .replace("Show More", "")
-//       .replace(/\s\s+/g, " ")
-//       .trim();
-//     console.log("This is description", description);
-
-//     res.json({
-//       description: description,
-
-//       //images: images
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ error: "Internal server error" });
-//   }
-// });
-
-// // Route to scrape product title from a website
-// router.get("/getInfo", async (req, res) => {
-//   try {
-//     const { title, buyLink } = req.body;
-
-//     const [imageResponse, shoppingResponse] = await Promise.all([
-//       axios.get(`https://www.google.com/search?q=${title}&tbm=isch`),
-//       axios.get(`https://shopping.google.com/search?q=${title}`),
-//     ]);
-
-//     const $ = cheerio.load(imageResponse.data);
-//     const imageUrls = [];
-//     $("img").each((index, element) => {
-//       if (index < 4) {
-//         // Limit to the first 3 images
-//         const imageUrl = $(element).attr("src");
-//         imageUrls.push(imageUrl);
-//       }
-//     });
-
-//     const $1 = cheerio.load(shoppingResponse.data);
-//     const rating = $1(".pyOKtc").first().text();
-//     const url = $1(".xUCO8b").first().attr("href");
-
-//     const [productResponse, buyLinkResponse] = await Promise.all([
-//       axios.get(url),
-//       buyLink.includes("pricebefore.com")
-//         ? axios.get(buyLink)
-//         : Promise.resolve({ data: "" }),
-//     ]);
-
-//     const $2 = cheerio.load(productResponse.data);
-//     const description = $2(".VOVcm").text();
-
-//     const p = cheerio.load(buyLinkResponse.data);
-//     const updatedBuyLink = buyLink.includes("pricebefore.com")
-//       ? p(".buy-button a").attr("href") || ""
-//       : buyLink;
-
-//     res.json({
-//       description: description,
-//       ratings: rating,
-//       images: imageUrls.slice(1, imageUrls.length),
-//       buyLink: updatedBuyLink,
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ error: "An error occurred" });
-//   }
-// });

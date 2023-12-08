@@ -41,4 +41,4 @@ app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 
 // Start the server
-app.listen(process.env.PORT || 3000);
+app.listen( 3000);
