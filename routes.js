@@ -206,7 +206,7 @@ async function fetchData(itemName, region, startIndex, endIndex) {
   let browser;
 
   try {
-    browser = await puppeteer.launch();
+    browser = await chromium.launch()
     const page = await browser.newPage();
     await page.goto(
       `https://www.google.com/search?q=${itemName}&tbm=shop&gl=${region}&tbs=mr:1,sales:1&hl=en`
@@ -323,7 +323,7 @@ function checkIfDataNeedsRefresh(cacheKey) {
 async function getFirst4WordsFromGoogleSearch(query) {
   // try {
   //   // Launch a headless browser using Puppeteer
-  //   const browser = await puppeteer.launch();
+  //   const browser = await chromium.launch()
   //   const page = await browser.newPage();
 
   //   // Navigate to Google Images
@@ -629,7 +629,7 @@ async function sendNotification() {
     console.log("Processing campaign:", topic);
     if (topic.region) {
       try {
-        browser = await puppeteer.launch();
+        browser = await chromium.launch()
         const page = await browser.newPage();
         await page.goto(
           `https://www.google.com/search?q=${topic.title}&tbm=shop&gl=${topic.region}&tbs=mr:1,sales:1&hl=en x`
@@ -1046,7 +1046,7 @@ router.get("/productDetails", async (req, res) => {
     }
 
     // Fetch data if not in cache
-    const browser = await puppeteer.launch();
+    const browser = await chromium.launch()
     const page = await browser.newPage();
 
     const firstFourWords = title.split(" ").slice(0, 4).join(" ");
