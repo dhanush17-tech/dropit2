@@ -14,15 +14,15 @@ const { chromium } = require("playwright");
 const NodeCache = require("node-cache");
 const { DateTime } = require("luxon");
 const cache = new NodeCache();
-const Redis = require("redis");
+// const Redis = require("redis");
 
-const client = Redis.createClient({
-  password: "w9FMHjTYYgzqLkamivU4bWId9INfumDl",
-  socket: {
-    host: "redis-19228.c281.us-east-1-2.ec2.cloud.redislabs.com",
-    port: 19228,
-  },
-});
+// const client = Redis.createClient({
+//   password: "w9FMHjTYYgzqLkamivU4bWId9INfumDl",
+//   socket: {
+//     host: "redis-19228.c281.us-east-1-2.ec2.cloud.redislabs.com",
+//     port: 19228,
+//   },
+// });
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -171,35 +171,35 @@ router.get("/searchItem", async (req, res) => {
 router.get("/latestDeals", async (req, res) => {
   console.log("Started....");
 
-  if (!client.isOpen) {
-    try {
-      await client.connect();
-    } catch (err) {
-      return res.status(500).json({ error: "Redis connection failed" });
-    }
-  }
+  // if (!client.isOpen) {
+  //   try {
+  //     await client.connect();
+  //   } catch (err) {
+  //     return res.status(500).json({ error: "Redis connection failed" });
+  //   }
+  // }
 
   const { itemName, region, page = 1, limit = 10 } = req.query;
   console.log(page, limit);
 
   const cacheKey = `latestDeals_${itemName}_${region}_${page}_${limit}`;
 
-  try {
-    const data = await client.get(cacheKey);
-    if (data) {
-      console.log("Retrieved from cache");
-      return res.json(JSON.parse(data));
-    } else {
+  // try {
+  //   const data = await client.get(cacheKey);
+  //   if (data) {
+  //     console.log("Retrieved from cache");
+  //     return res.json(JSON.parse(data));
+  //   } else {
       const initialData = await fetchData(itemName, region, page, page + 10);
-      console.log("Data stored in cache");
+      // console.log("Data stored in cache");
 
-      await client.setEx(cacheKey, 18000, JSON.stringify(initialData));
+      // await client.setEx(cacheKey, 18000, JSON.stringify(initialData));
       return res.json(initialData);
-    }
-  } catch (err) {
-    console.error("Error:", err);
-    return res.status(500).json({ error: "Internal Server Error" });
-  }
+  //   }
+  // } catch (err) {
+  //   console.error("Error:", err);
+  //   return res.status(500).json({ error: "Internal Server Error" });
+  // }
 });
 
 async function fetchData(itemName, region, startIndex, endIndex) {
@@ -462,19 +462,19 @@ async function scrapeProductTitle(upcCode, count) {
     .join(" ");
 }
 router.get("/googleSearch", async (req, res) => {
-  if (!client.isOpen) {
-    await client.connect();
-  }
+  // if (!client.isOpen) {
+  //   await client.connect();
+  // }
   try {
     const { itemName, region } = req.query;
-    const cacheKey = `googleSearch_${itemName}_${region}`;
+    // const cacheKey = `googleSearch_${itemName}_${region}`;
 
-    // Check if data is in cache
-    const cachedData = await client.get(cacheKey);
-    if (cachedData) {
-      console.log("Retrieved from cache");
-      return res.json(JSON.parse(cachedData));
-    }
+    // // Check if data is in cache
+    // const cachedData = await client.get(cacheKey);
+    // if (cachedData) {
+    //   console.log("Retrieved from cache");
+    //   return res.json(JSON.parse(cachedData));
+    // }
 
     console.log(itemName, region);
     const browser = await chromium.launch();
@@ -524,7 +524,7 @@ router.get("/googleSearch", async (req, res) => {
     console.log(shelvesData);
 
     // Cache the scraped data
-    await client.setEx(cacheKey, 1800, JSON.stringify(shelvesData)); // Cache for 1 hour
+    // await client.setEx(cacheKey, 1800, JSON.stringify(shelvesData)); // Cache for 1 hour
 
     res.json(shelvesData);
   } catch (error) {
@@ -961,17 +961,17 @@ async function getFirstGoogleSearchLink(query) {
 }
 router.get("/latestCoupons", async (req, res) => {
   console.log("Fetching Coupons...");
-  const cacheKey = "latestCoupons";
-  if (!client.isOpen) {
-    client.connect();
-  }
+  // const cacheKey = "latestCoupons";
+  // if (!client.isOpen) {
+  //   client.connect();
+  // }
   try {
     // Check cache first
-    const cachedCoupons = await client.get(cacheKey);
-    if (cachedCoupons) {
-      console.log("Retrieved from cache");
-      return res.json(JSON.parse(cachedCoupons));
-    }
+    // const cachedCoupons = await client.get(cacheKey);
+    // if (cachedCoupons) {
+    //   console.log("Retrieved from cache");
+    //   return res.json(JSON.parse(cachedCoupons));
+    // }
 
     // Fetch data if not in cache
     const response = await axios.get("https://www.coupons.com/");
@@ -1021,7 +1021,7 @@ router.get("/latestCoupons", async (req, res) => {
     );
 
     // Cache the result
-    await client.setEx(cacheKey, 3600, JSON.stringify(filteredCoupons));
+    // await client.setEx(cacheKey, 3600, JSON.stringify(filteredCoupons));
     res.json(filteredCoupons);
   } catch (error) {
     console.error("Error fetching coupons: ", error);
@@ -1031,11 +1031,11 @@ router.get("/latestCoupons", async (req, res) => {
 
 router.get("/productDetails", async (req, res) => {
   const { title } = req.query;
-  const cacheKey = `productDetails_${title}`;
+  // const cacheKey = `productDetails_${title}`;
 
-  if (!client.isOpen) {
-    await client.connect();
-  }
+  // if (!client.isOpen) {
+  //   await client.connect();
+  // }
 
   try {
     // Check cache first
@@ -1079,7 +1079,7 @@ router.get("/productDetails", async (req, res) => {
 
     // Cache the result
     const details = { description, rating };
-    await client.setEx(cacheKey, 3600, JSON.stringify(details));
+    // await client.setEx(cacheKey, 3600, JSON.stringify(details));
     res.json(details);
   } catch (error) {
     console.error("Error fetching product details:", error);
@@ -1092,6 +1092,5 @@ cron.schedule("0 9,14,18 * * *", () => {
   // Call your function
   sendNotification();
 });
-sendNotification();
 
 module.exports = router;
