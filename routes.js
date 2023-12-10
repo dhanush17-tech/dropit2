@@ -23,6 +23,7 @@ const cache = new NodeCache();
 //     port: 19228,
 //   },
 // });
+
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -190,11 +191,11 @@ router.get("/latestDeals", async (req, res) => {
   //     console.log("Retrieved from cache");
   //     return res.json(JSON.parse(data));
   //   } else {
-      const initialData = await fetchData(itemName, region, page, page + 10);
-      // console.log("Data stored in cache");
+  const initialData = await fetchData(itemName, region, page, page + 10);
+  // console.log("Data stored in cache");
 
-      // await client.setEx(cacheKey, 18000, JSON.stringify(initialData));
-      return res.json(initialData);
+  // await client.setEx(cacheKey, 18000, JSON.stringify(initialData));
+  return res.json(initialData);
   //   }
   // } catch (err) {
   //   console.error("Error:", err);
@@ -206,10 +207,11 @@ async function fetchData(itemName, region, startIndex, endIndex) {
   let browser;
 
   try {
-    browser = await chromium.launch()
+    browser = await chromium.launch({});
     const page = await browser.newPage();
     await page.goto(
-      `https://www.google.com/search?q=${itemName}&tbm=shop&gl=${region}&tbs=mr:1,sales:1&hl=en`
+      `https://www.google.com/search?q=${itemName}&tbm=shop&gl=${region}&tbs=mr:1,sales:1&hl=en`,
+      { timeout: 60000 }
     );
     await page.screenshot({ path: "path.png" });
     // await page.waitForSelector(".sh-dgr__content img", { timeout: 5000 });
@@ -378,7 +380,9 @@ router.get("/barcodeScan", async (req, res) => {
     console.log(title);
     try {
       console.log(upcCode, region);
-      const browser = await chromium.launch();
+      const browser = await chromium.launch({
+        args: ["--proxy-server=51.250.13.88:80"],
+      });
       const page = await browser.newPage();
 
       await page.goto(
@@ -477,7 +481,9 @@ router.get("/googleSearch", async (req, res) => {
     // }
 
     console.log(itemName, region);
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({
+      args: ["--proxy-server=51.250.13.88:80"],
+    });
     const page = await browser.newPage();
 
     await page.goto(
@@ -629,7 +635,9 @@ async function sendNotification() {
     console.log("Processing campaign:", topic);
     if (topic.region) {
       try {
-        browser = await chromium.launch()
+        browser = await chromium.launch({
+          args: ["--proxy-server=51.250.13.88:80"],
+        });
         const page = await browser.newPage();
         await page.goto(
           `https://www.google.com/search?q=${topic.title}&tbm=shop&gl=${topic.region}&tbs=mr:1,sales:1&hl=en x`
@@ -748,7 +756,7 @@ async function sendNotification() {
 //     const topic = campaign;
 //     console.log("Processing campaign:", topic);
 
-//        // Replace Puppeteer with Axios to fetch the page content
+//        // Replace Puppeteer with axios to fetch the page content
 //        const response = await axios.get(
 //          `https://www.google.com/search?q=${encodeURIComponent(
 //            topic.title
@@ -776,7 +784,7 @@ async function sendNotification() {
 //            const productPrice = $(el).find(".a8Pemb").text().trim();
 //            const img = $(el).find(".ArOc1c img").first().attr("src");
 //            const websiteName = extractWebsiteName($(el).find(".aULzUe").text());
-//            // Note: getWebsiteLogo function needs to be compatible with Axios and Cheerio
+//            // Note: getWebsiteLogo function needs to be compatible with axios and Cheerio
 //            const websiteLogo = ""; // Placeholder, implement getWebsiteLogo logic
 
 //            let offer =
@@ -974,7 +982,7 @@ router.get("/latestCoupons", async (req, res) => {
     // }
 
     // Fetch data if not in cache
-    const response = await axios.get("https://www.coupons.com/");
+    const response = await axios.get("http://www.coupons.com/");
     const $ = cheerio.load(response.data);
     const couponsList = $("._1otx6d61._1otx6d64");
     let couponPromises = [];
@@ -1039,14 +1047,16 @@ router.get("/productDetails", async (req, res) => {
 
   try {
     // Check cache first
-    const cachedDetails = await client.get(cacheKey);
+    // const cachedDetails = await client.get(cacheKey);
     if (cachedDetails) {
       console.log("Retrieved from cache");
       return res.json(JSON.parse(cachedDetails));
     }
 
     // Fetch data if not in cache
-    const browser = await chromium.launch()
+    const browser = await chromium.launch({
+      args: ["--proxy-server=51.250.13.88:80"],
+    });
     const page = await browser.newPage();
 
     const firstFourWords = title.split(" ").slice(0, 4).join(" ");
