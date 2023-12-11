@@ -1,19 +1,22 @@
 // routes.js
 const express = require("express");
 const unirest = require("unirest");
-
+const { executablePath } = require("puppeteer");
 const router = express.Router();
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const admin = require("firebase-admin");
 const axios = require("axios");
 const cheerio = require("cheerio");
 const bodyParser = require("body-parser");
 const cron = require("node-cron");
 const serviceAccount = require("./price-tracker-4cc9b-firebase-adminsdk-8j9qc-d733aeb855.json");
-const { chromium } = require("playwright");
 const NodeCache = require("node-cache");
 const { DateTime } = require("luxon");
 const cache = new NodeCache();
+const puppeteerExtra = require("puppeteer-extra");
+const proxyList = require("./proxyList.json");
+
 // const Redis = require("redis");
 
 // const client = Redis.createClient({
@@ -23,17 +26,11 @@ const cache = new NodeCache();
 //     port: 19228,
 //   },
 // });
-
+puppeteerExtra.use(StealthPlugin());
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 const db = admin.firestore();
-
-(async () => {
-  browserPromise = chromium.launch({
-    ignoreDefaultArgs: ["--disable-extensions"],
-  });
-})();
 
 // Get campaign data from Firestore
 async function getCampaigns() {
@@ -59,31 +56,31 @@ async function addDocument(collection, data) {
   }
 }
 
-const getWebsiteLogo = async (productName) => {
-  try {
-    const query = encodeURIComponent(productName);
-    const searchUrl = `https://www.google.com/search?q=${
-      query.split(" ")[0]
-    } icon logo&tbm=isch`;
+// const getWebsiteLogo = async (productName) => {
+//   try {
+//     const query = encodeURIComponent(productName);
+//     const searchUrl = `https://www.google.com/search?q=${
+//       query.split(" ")[0]
+//     } icon logo&tbm=isch`;
 
-    // Set a user-agent
-    const headers = {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
-    };
+//     // Set a user-agent
+//     const headers = {
+//       "User-Agent":
+//         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36",
+//     };
 
-    const response = await axios.get(searchUrl, { headers });
+//     const response = await axios.get(searchUrl, { headers });
 
-    const $ = cheerio.load(response.data);
-    // Adjust the selector to find the image
-    const websiteLogo = $(".RntSmf").find("img").attr("src");
+//     const $ = cheerio.load(response.data);
+//     // Adjust the selector to find the image
+//     const websiteLogo = $(".RntSmf").find("img").attr("src");
 
-    return websiteLogo;
-  } catch (error) {
-    console.error("Error fetching website logo:", error);
-    return null;
-  }
-};
+//     return websiteLogo;
+//   } catch (error) {
+//     console.error("Error fetching website logo:", error);
+//     return null;
+//   }
+// };
 
 async function scrapeProductPage(html, items) {
   const $ = cheerio.load(html);
@@ -203,21 +200,20 @@ router.get("/latestDeals", async (req, res) => {
   // }
 });
 
+
 async function fetchData(itemName, region, startIndex, endIndex) {
-  let browser;
-
   try {
-    browser = await chromium.launch({});
-    const page = await browser.newPage();
-    await page.goto(
-      `https://www.google.com/search?q=${itemName}&tbm=shop&gl=${region}&tbs=mr:1,sales:1&hl=en`,
-      { timeout: 60000 }
-    );
-    await page.screenshot({ path: "path.png" });
-    // await page.waitForSelector(".sh-dgr__content img", { timeout: 5000 });
-    await page.screenshot({ path: "path2.png" });
+    // Construct the URL for the Google Shopping search
+    const searchUrl = `http://www.google.com/search?q=${itemName}&tbm=shop&gl=${region}&tbs=mr:1,sales:1&hl=en`;
 
-    const content = await page.content();
+    // Fetch the HTML content of the search results page
+    const response = await axios.get(searchUrl, {
+      "User-Agent": "Mozilla/5.0 ...",
+      timeout: 60000,
+      // Add headers here if needed
+    });
+
+    const content = response.data;
     const $ = cheerio.load(content);
 
     const firstProductElements = $(".sh-dgr__content").slice(
@@ -265,16 +261,109 @@ async function fetchData(itemName, region, startIndex, endIndex) {
   } catch (error) {
     console.error("Error:", error);
     throw new Error("Internal Server Error");
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
   }
 }
 
-function extractWebsiteName(websiteNameString) {
-  const parts = websiteNameString.split("}");
-  return parts.length > 0 ? parts[parts.length - 1].trim() : null;
+// function extractWebsiteName(websiteNameString) {
+//   const parts = websiteNameString.split("}");
+//   return parts.length > 0 ? parts[parts.length - 1].trim() : null;
+// }
+
+const rotateProxy = () => {
+  const randomIndex = Math.floor(Math.random() * proxyList.length);
+  return proxyList[randomIndex];
+};
+
+router.get("/scrape", async (req, res) => {
+  try {
+    const { searchTerm } = req.query;
+
+    const proxy = rotateProxy();
+    console.log(`Using proxy: ${proxy}`);
+
+    const options = {
+      method: "GET",
+      url: `http://www.google.com/search?q=${searchTerm}`,
+      headers: {
+        "Accept": "*/*",
+        "Cache-Control": "max-age=259200",
+        "Host": "httpbin.org",
+        "User-Agent": "curl/7.58.0",
+        "X-Amzn-Trace-Id": "Root=1-5eaf8e7c-6a1162a1387a1743a49063f4",
+      },
+      timeout: 60000,
+    };
+
+    const response = await axios(options);
+    const $ = cheerio.load(response.data);
+
+    const firstProductElements = $(".sh-dgr__content").slice(0, 10);
+    const shelvesData = await Promise.all(
+      firstProductElements.map(async (i, el) => {
+        const productName = $(el).find(".tAxDx").text().trim();
+        const productLink = decodeURIComponent(
+          $(el)
+            .find(".shntl a")
+            .attr("href")
+            .replace("/url?url=", "")
+            .replace("http://www.google.com", "")
+        );
+        const productPrice = $(el).find(".a8Pemb").text().trim();
+        const img = $(el).find(".ArOc1c img").first().attr("src");
+        const websiteName = extractWebsiteName($(el).find(".aULzUe").text());
+        const websiteLogo = await getWebsiteLogo(websiteName);
+
+        let offer =
+          $(el).find(".LGq5Zc").text().trim() ||
+          $(el).find(".VRpiue").text().trim() ||
+          $(el).find(".zY3Xhe").text().trim() ||
+          "";
+
+        return {
+          buyLink: productLink,
+          title: productName,
+          price: productPrice,
+          img,
+          websiteLogo,
+          websiteName,
+          offer:
+            $(el).find(".zY3Xhe").text().trim() !== ""
+              ? `Was ${$(el).find(".zY3Xhe").text().trim()}`
+              : offer,
+        };
+      })
+    );
+
+    console.log(shelvesData);
+    res.send(shelvesData);
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).send({ error: "Internal Server Error" });
+  }
+});
+
+function extractWebsiteName(text) {
+  return text
+    .replace("Visit", "")
+    .replace("Visit:", "")
+    .replace("Visit", "")
+    .trim();
+}
+
+async function getWebsiteLogo(websiteName) {
+  try {
+    const options = {
+      method: "GET",
+      url: `http://api.clearbit.com/v1/logos/${websiteName}`,
+      json: true,
+    };
+
+    const response = await request(options);
+    return response.logo;
+  } catch (error) {
+    console.error("Error:", error);
+    return "";
+  }
 }
 // FROM PRICEE.COM
 
@@ -325,7 +414,7 @@ function checkIfDataNeedsRefresh(cacheKey) {
 async function getFirst4WordsFromGoogleSearch(query) {
   // try {
   //   // Launch a headless browser using Puppeteer
-  //   const browser = await chromium.launch()
+  //   const browser = await puppeteer.launch()
   //   const page = await browser.newPage();
 
   //   // Navigate to Google Images
@@ -380,7 +469,7 @@ router.get("/barcodeScan", async (req, res) => {
     console.log(title);
     try {
       console.log(upcCode, region);
-      const browser = await chromium.launch({
+      const browser = await puppeteer.launch({
         args: ["--proxy-server=51.250.13.88:80"],
       });
       const page = await browser.newPage();
@@ -481,7 +570,7 @@ router.get("/googleSearch", async (req, res) => {
     // }
 
     console.log(itemName, region);
-    const browser = await chromium.launch({
+    const browser = await puppeteer.launch({
       args: ["--proxy-server=51.250.13.88:80"],
     });
     const page = await browser.newPage();
@@ -635,7 +724,7 @@ async function sendNotification() {
     console.log("Processing campaign:", topic);
     if (topic.region) {
       try {
-        browser = await chromium.launch({
+        browser = await puppeteer.launch({
           args: ["--proxy-server=51.250.13.88:80"],
         });
         const page = await browser.newPage();
@@ -1054,7 +1143,7 @@ router.get("/productDetails", async (req, res) => {
     }
 
     // Fetch data if not in cache
-    const browser = await chromium.launch({
+    const browser = await puppeteer.launch({
       args: ["--proxy-server=51.250.13.88:80"],
     });
     const page = await browser.newPage();
