@@ -6,6 +6,7 @@ const productDetails = require("./routes/productDetails");
 const barcodeScan = require("./routes/barcodeScan");
 const latestDeals = require("./routes/latestDeals");
 const latestCoupons = require("./routes/latestCoupons");
+const healthcheck = require("./routes/healthcheck");
 const cors = require("cors");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
@@ -52,6 +53,7 @@ app.use("/productDetails", productDetails);
 app.use("/barcodeScan", barcodeScan);
 app.use("/latestDeals", latestDeals);
 app.use("/latestCoupons", latestCoupons);
+app.use("/healthcheck", healthcheck);
 app.use("/", notification);
 
 // Use the router
