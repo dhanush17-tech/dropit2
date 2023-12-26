@@ -32,7 +32,7 @@ COPY . .
 EXPOSE 3000
 RUN npm install pm2 -g
 # Specify the command to run your Express app
-CMD [ "pm2-runtime", "npm", "--", "start" ]
+CMD [ "node",  "index.js" ]
 
 
 

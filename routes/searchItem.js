@@ -14,7 +14,7 @@ const { DateTime } = require("luxon");
 const cache = new NodeCache();
 const Redis = require("redis");
 require("dotenv").config();
- 
+
 const client = Redis.createClient({
   password: process.env.REDIS_PASSWORD,
   socket: {
@@ -24,7 +24,7 @@ const client = Redis.createClient({
 });
 
 /**
- * @swagger
+ * @openapi
  * /searchItem:
  *   get:
  *     summary: Search for an item using Google Shopping.
@@ -38,8 +38,9 @@ const client = Redis.createClient({
  *           type: string
  *       - in: query
  *         name: region
+ *         example: us
  *         required: true
- *         description: Region code to refine the search results.
+ *         description: The region where the search is conducted (e.g., 'us' for the United States).
  *         schema:
  *           type: string
  *     responses:
@@ -99,7 +100,7 @@ router.get("/", async (req, res) => {
 
     console.log(itemName, region);
     const browser = await puppeteer.launch({
-        executablePath: "/usr/bin/chromium-browser",
+      executablePath: "/usr/bin/chromium-browser",
 
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
       headless: true,
@@ -154,7 +155,10 @@ router.get("/", async (req, res) => {
 
     res.json(shelvesData);
   } catch (error) {
- 
+    process.on("uncaughtException", (err) => {
+      console.error("There was an uncaught error", err);
+      process.exit(1); //exit code 1 signals PM2 that the process should restart
+    });
     console.error("Error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
@@ -186,7 +190,6 @@ const getWebsiteLogo = async (productName) => {
 
     return websiteLogo;
   } catch (error) {
- 
     console.error("Error fetching website logo:", error);
     return null;
   }

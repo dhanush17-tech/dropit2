@@ -23,9 +23,8 @@ const client = Redis.createClient({
   },
 });
 
-
 /**
- * @swagger
+ * @openapi
  * /latestDeals:
  *   get:
  *     summary: Get the latest deals based on item name and region.
@@ -37,10 +36,13 @@ const client = Redis.createClient({
  *         description: Name of the item to search for deals.
  *         schema:
  *           type: string
+ *           enum: [mobile, laptops, tvs] 
+ *           example: mobile  // Provide an example if needed
  *       - in: query
  *         name: region
  *         required: true
- *         description: Region where the item deals are to be searched.
+ *         example: us
+ *         description: The region where the search is conducted (e.g., 'us' for the United States).
  *         schema:
  *           type: string
  *       - in: query
@@ -100,7 +102,6 @@ const client = Redis.createClient({
  *                   description: Error message explaining the reason for the failure.
  */
 
-
 router.get("/", async (req, res) => {
   console.log("Started....");
 
@@ -130,7 +131,6 @@ router.get("/", async (req, res) => {
       return res.json(initialData);
     }
   } catch (err) {
-  
     console.error("Error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
@@ -206,8 +206,11 @@ async function fetchData(itemName, region, startIndex, endIndex) {
     console.log(shelvesData);
     return shelvesData;
   } catch (error) {
- 
     console.error("Error:", error);
+    process.on("uncaughtException", (err) => {
+      console.error("There was an uncaught error", err);
+      process.exit(1); //exit code 1 signals PM2 that the process should restart
+    });
     throw new Error("Internal Server Error");
   } finally {
     if (browser) {
@@ -242,7 +245,6 @@ const getWebsiteLogo = async (productName) => {
 
     return websiteLogo;
   } catch (error) {
- 
     console.error("Error fetching website logo:", error);
     return null;
   }

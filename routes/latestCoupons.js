@@ -24,6 +24,7 @@ const client = Redis.createClient({
 });
 
 /**
+ * @openapi
  * /latestCoupons:
  *   get:
  *     summary: Fetch the latest coupons.

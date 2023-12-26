@@ -24,7 +24,7 @@ const client = Redis.createClient({
 });
 
 /**
- * @swagger
+ * @openapi
  * /barcodeScan:
  *   get:
  *     summary: Scans barcode and retrieves product information.
@@ -117,7 +117,7 @@ async function scrapeBarcodeData(upcCode, region) {
     try {
       console.log(upcCode, region);
       const browser = await puppeteer.launch({
-  executablePath: "/usr/bin/chromium-browser",
+        executablePath: "/usr/bin/chromium-browser",
 
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
 
@@ -169,9 +169,12 @@ async function scrapeBarcodeData(upcCode, region) {
 
       return shelvesData;
     } catch (error) {
-    
       console.error("Error:", error);
       res.status(500).json({ error: "An error occurred" });
+      process.on("uncaughtException", (err) => {
+        console.error("There was an uncaught error", err);
+        process.exit(1); //exit code 1 signals PM2 that the process should restart
+      });
     }
   });
 }
@@ -201,7 +204,6 @@ const getWebsiteLogo = async (productName) => {
 
     return websiteLogo;
   } catch (error) {
-   
     console.error("Error fetching website logo:", error);
     return null;
   }
@@ -212,7 +214,7 @@ async function getFirst4WordsFromGoogleSearch(query) {
   try {
     // Launch a headless browser
     const browser = await puppeteer.launch({
-  executablePath: "/usr/bin/chromium-browser",
+      executablePath: "/usr/bin/chromium-browser",
 
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
 
@@ -235,7 +237,6 @@ async function getFirst4WordsFromGoogleSearch(query) {
     // Return the title
     return title.trim().split(" ").slice(0, 4).join(" ");
   } catch (error) {
- 
     console.error("An error occurred:", error);
     res.status(500);
     throw error;

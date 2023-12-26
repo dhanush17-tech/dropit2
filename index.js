@@ -6,23 +6,29 @@ const productDetails = require("./routes/productDetails");
 const barcodeScan = require("./routes/barcodeScan");
 const latestDeals = require("./routes/latestDeals");
 const latestCoupons = require("./routes/latestCoupons");
-
+const cors = require("cors");
 const swaggerUi = require("swagger-ui-express");
 const swaggerJsdoc = require("swagger-jsdoc");
 
 require("dotenv").config();
 // Swagger definition
+const corsOptions = {
+  origin: "*", // Replace with the domain where your Swagger UI is hosted
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+app.use(cors(corsOptions));
 
 const swaggerDefinition = {
   openapi: "3.0.0",
   info: {
-    title: "Price Tracker API",
+    title: "Shopwise API",
     version: "1.0.0",
     description: "API for tracking price changes and deals",
   },
   servers: [
     {
-      url: "http://dropit2-production.up.railway.app",
+      url: "",
       description: "Production server",
     },
   ],

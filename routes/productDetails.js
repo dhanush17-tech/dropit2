@@ -26,7 +26,7 @@ const client = Redis.createClient({
 
 
 /**
- * @swagger
+ * @openapi
  * /productDetails:
  *   get:
  *     summary: Retrieve product details including description and rating
