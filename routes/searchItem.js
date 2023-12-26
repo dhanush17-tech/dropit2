@@ -25,7 +25,7 @@ const client = Redis.createClient({
 
 /**
  * @openapi
- * /searchItem:
+ * /googleSearch:
  *   get:
  *     summary: Search for an item using Google Shopping.
  *     description: Retrieve items based on the search query and region.

@@ -13,7 +13,7 @@ Shopwise API provides a comprehensive solution for retrieving shopping-related d
 ## Endpoints
 
 ### 1. Search Item
-- **Endpoint**: `/searchItem`
+- **Endpoint**: `/googleSearch`
 - **Method**: `GET`
 - **Parameters**:
   - `itemName`: Name of the item (required).
