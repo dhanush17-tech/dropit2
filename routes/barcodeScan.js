@@ -126,7 +126,7 @@ async function scrapeBarcodeData(upcCode, region) {
       const page = await browser.newPage();
 
       await page.goto(
-        `https://www.google.com/search?tbm=shop&q=${title}&tbm=shop&gl=${region}&tbs=mr:1,sales:1&hl=en`
+        `https://www.google.com/search?tbm=shop&q=${title}&tbm=shop&gl=${region}&hl=en`
       );
       await page.screenshot({ path: "path2.png" });
       const $ = cheerio.load(await page.content());
@@ -226,11 +226,11 @@ async function getFirst4WordsFromGoogleSearch(query) {
     await page.goto(`https://www.google.com/search?q=${query}`);
 
     // Wait for the search results to load (you can adjust the selector as needed)
-    await page.waitForSelector(".tF2Cxc h3");
+    await page.waitForSelector(".GyAeWb");
 
     // Extract the text from the first search result link
     const title = await page.evaluate(() => {
-      const link = document.querySelector(".tF2Cxc h3");
+      const link = document.querySelector(".GyAeWb h3").firstChild;
       return link ? link.textContent.trim() : "";
     });
 
@@ -239,7 +239,8 @@ async function getFirst4WordsFromGoogleSearch(query) {
     await browser.close();
 
     // Return the first 4 words of the title
-    const words = title.split(" ").slice(0, 4).join(" ");
+    const words = title;
+    //.split(" ").slice(0, 4).join(" ");
     return words;
   } catch (error) {
     console.error("Error:", error);
