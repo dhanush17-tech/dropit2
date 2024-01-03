@@ -87,16 +87,16 @@ router.get("/", async (req, res) => {
   if (!client.isOpen) {
     await client.connect();
   }
-  try {
-    const { itemName, region } = req.query;
-    const cacheKey = `googleSearch_${itemName}_${region}`;
+  const { itemName, region } = req.query;
+  const cacheKey = `googleSearch_${itemName}_${region}`;
 
-    // Check if data is in cache
-    const cachedData = await client.get(cacheKey);
-    if (cachedData) {
-      console.log("Retrieved from cache");
-      return res.json(JSON.parse(cachedData));
-    }
+  // Check if data is in cache
+  const cachedData = await client.get(cacheKey);
+  if (cachedData) {
+    console.log("Retrieved from cache");
+    return res.json(JSON.parse(cachedData));
+  }
+  try {
 
     console.log(itemName, region);
     const browser = await puppeteer.launch({
@@ -154,7 +154,7 @@ router.get("/", async (req, res) => {
     await client.setEx(cacheKey, 1800, JSON.stringify(shelvesData)); // Cache for 1 hour
 
     res.json(shelvesData);
-  } catch (error) {
+  } catch (error) {    process.exit();
     process.on("uncaughtException", (err) => {
       console.error("There was an uncaught error", err);
       process.exit(1); //exit code 1 signals PM2 that the process should restart

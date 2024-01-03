@@ -2,8 +2,8 @@
   "name": "functions",
   "description": "Cloud Functions for Firebase",
   "scripts": {
-    "start": " pm2 start index.js",
-    "build": "nodemon index.js"
+    "start": "node index.js",
+    "build": "node index.js"
   },
   "engines": {
     "node": "18.18.2"

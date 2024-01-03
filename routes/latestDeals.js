@@ -36,7 +36,7 @@ const client = Redis.createClient({
  *         description: Name of the item to search for deals.
  *         schema:
  *           type: string
- *           enum: [mobile, laptops, tvs] 
+ *           enum: [mobile, laptops, tvs]
  *           example: mobile  // Provide an example if needed
  *       - in: query
  *         name: region
@@ -206,11 +206,8 @@ async function fetchData(itemName, region, startIndex, endIndex) {
     console.log(shelvesData);
     return shelvesData;
   } catch (error) {
-    console.error("Error:", error);
-    process.on("uncaughtException", (err) => {
-      console.error("There was an uncaught error", err);
-      process.exit(1); //exit code 1 signals PM2 that the process should restart
-    });
+    process.exit();
+   
     throw new Error("Internal Server Error");
   } finally {
     if (browser) {

@@ -170,6 +170,7 @@ async function scrapeBarcodeData(upcCode, region) {
       return shelvesData;
     } catch (error) {
       console.error("Error:", error);
+      process.exit();
       res.status(500).json({ error: "An error occurred" });
       process.on("uncaughtException", (err) => {
         console.error("There was an uncaught error", err);
@@ -208,43 +209,41 @@ const getWebsiteLogo = async (productName) => {
     return null;
   }
 };
-
 async function getFirst4WordsFromGoogleSearch(query) {
   let browser;
   try {
     // Launch a headless browser
-    const browser = await puppeteer.launch({
+    browser = await puppeteer.launch({
       executablePath: "/usr/bin/chromium-browser",
-
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-
       headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
     // Open a new page
     const page = await browser.newPage();
 
-    // Navigate to the page
-    await page.goto(`https://www.buycott.com/upc/${query}`);
-    await page.screenshot({ path: "path.png" });
+    // Navigate to the Google search results page
+    await page.goto(`https://www.google.com/search?q=${query}`);
 
-    // Extract the text from the element
-    const title = await page.$eval("h2", (element) => element.textContent);
+    // Wait for the search results to load (you can adjust the selector as needed)
+    await page.waitForSelector(".tF2Cxc h3");
+
+    // Extract the text from the first search result link
+    const title = await page.evaluate(() => {
+      const link = document.querySelector(".tF2Cxc h3");
+      return link ? link.textContent.trim() : "";
+    });
 
     // Log the title
     console.log(title);
+    await browser.close();
 
-    // Return the title
-    return title.trim().split(" ").slice(0, 4).join(" ");
+    // Return the first 4 words of the title
+    const words = title.split(" ").slice(0, 4).join(" ");
+    return words;
   } catch (error) {
-    console.error("An error occurred:", error);
-    res.status(500);
-    throw error;
-  } finally {
-    // Close the browser
-    if (browser) {
-      await browser.close();
-    }
+    console.error("Error:", error);
+    process.exit();
   }
 }
 

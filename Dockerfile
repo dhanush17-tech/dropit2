@@ -30,9 +30,12 @@ COPY . .
 
 # Expose the port that your Express app listens on
 EXPOSE 3000
+
+# Install PM2 globally
 RUN npm install pm2 -g
-# Specify the command to run your Express app
-CMD [ "node",  "index.js" ]
+
+# Specify the command to run your Express app using PM2
+CMD ["pm2-runtime", "index.js"]
 
 
 
